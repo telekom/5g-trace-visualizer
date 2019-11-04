@@ -1,0 +1,8 @@
+5g-trace-visualizer :- convert 5g wireshark data into an UML sequence diagram 
+Copyright (c) 2019, Josep Colom Ikuno, Deutsche Telekom AG 
+contact: opensource@telekom.de 
+
+contributors:
+-------------
+
+Josef Colom Ikuno (Deutsche Telekom AG)
