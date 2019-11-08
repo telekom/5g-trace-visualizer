@@ -42,6 +42,8 @@ http_method_regex = re.compile(r':method: (.*)')
 
 http2_string_unescape = False
 
+plant_uml_jar = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plantuml.jar')
+
 def find_nas_proto(ngap_pdu):
     if ngap_pdu is None:
         return None
@@ -638,7 +640,6 @@ def call_wireshark(wireshark_version, input_file_str, http2ports_string):
     return output_file
 
 def output_files_as_svg(output_files):
-    plant_uml_jar = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plantuml.jar')
     for counter,output_file in enumerate(output_files):
         plant_uml_command = 'java -jar "{0}" "{1}"'.format(plant_uml_jar, output_file)
         if debug:
@@ -662,6 +663,15 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 if __name__ == '__main__':
+
+    print('Searching for plantuml.jar under {0}'.format(plant_uml_jar))
+    if os.path.exists(plant_uml_jar):
+        print('Found plantuml.jar\n')
+    else:
+        print('NOT FOUND')
+        print("Please follow the instruction in README.md and go to http://plantuml.com/download to download PlantUML's JAR file")
+        sys.exit(2)
+
     parser = argparse.ArgumentParser(
         description='5G Wireshark trace visualizer for 5G protocol. Generates a .puml PlantUML file based on the specified PDML file. The output file is output in the same directory as the specified PDML file. Optionally, a Kubernetes pod file (YAML) can be used to further map trace IPs to pod names and namespaces')
     parser.add_argument('input', type=str, help="path (relative or absolute) of PDML file or PCAP file. If PCAP file is chosen, Wireshark portable must be in the wireshark/ folder. For PCAP files, a comma-separated (no spaces!) string of PCAP file paths can be provided. In this case, mergecap will be automatically called and further processign will be done based on this merged capture file")
