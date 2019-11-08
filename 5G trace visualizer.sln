@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.29123.88
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{888888A0-9F3D-457C-B088-3A5042F75D52}") = "5G trace visualizer", "5G trace visualizer.pyproj", "{E3AC488C-5DFD-4C62-A1DC-D1C9ADD330C3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E3AC488C-5DFD-4C62-A1DC-D1C9ADD330C3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3AC488C-5DFD-4C62-A1DC-D1C9ADD330C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {06CDB616-B059-490A-B01E-7D19A528E570}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,2 @@
+This application was tested with the 2019.11 version (Apache Software License Version) of plantuml.jar
+You can find it here: http://sourceforge.net/projects/plantuml/files/plantuml-jar-asl-1.2019.12.zip/download
