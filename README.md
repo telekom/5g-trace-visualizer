@@ -1,6 +1,9 @@
 # 5G Trace Visualizer
 
-{:toc}
+* Table of contents
+  * [Summary](#summary)
+  * [Requirements](#requirements)
+  * [Application structure](#application-structure)
 
 # Summary
 
@@ -17,6 +20,11 @@ It was born from the need to automatically convert 5G traces into something read
 * We could not find a commercial tool doing exactly what we needed. While [PlantUML](http://plantuml.com/) can generate nice diagrams, doing those manually requires too much time.
 
 ## Requirements
+* You need to have Java installed (executing the ``java`` command must launch Java). this is required because PlantUML runs on Java
+* ``plantuml.jar`` must be placed in the base directory (see [``place plantuml.jar here.txt``](place plantuml.jar here.txt)). This application was tested with the 2019.11 version (Apache Software License Version) of ``plantuml.jar``. You can find it [here](http://sourceforge.net/projects/plantuml/files/plantuml-jar-asl-1.2019.12.zip/download).
+* Wireshark portable of the desired versions placed in the ``/wireshark`` folder. See [instructions in folder](/wireshark/Readme.md).
+
+## Application structure
 
 The figure below summarizes what this small application does ([SVG](doc/summary.svg), [PNG](doc/summary.png), [Mermaid](doc/summary.mermaid))
 
