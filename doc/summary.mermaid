@@ -1,0 +1,10 @@
+graph TD
+A["Wireshark capture file(s) (PCAP/PCAPNG)"] --> |"Automate Wireshark call to generate PDML file (e.g. mergecap, HTTP protocol ports, protocol filters)" | B["PDML file (XML)"]
+B --> |Parse PDML file| C["Parsed packet data"]
+B1["k8s Pod and namespace mapping (YAML)"] --> |"Container namespace and IP addresses (Calico/Multus)"| C
+B2["OpenStack Server mapping (YAML)"] --> |"VM IP addresses"| C
+C --> |"Remove duplicates, clean-up packet descriptions, color protocols"| D["Plant UML file of packet capture (PUML)"]
+D --> E0["Automate call to Plant UML to generate SVG files from PUML file"]
+E0 --> E1["IP-address-based sequence diagram (SVG)"]
+E0 --> E2["Container-name-based sequence diagram (SVG)"]
+E0 --> E3["Container-namespace-based sequence diagram (SVG)"]
