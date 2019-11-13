@@ -16,7 +16,7 @@ import traceback
 import yaml_parser
 import urllib.parse
 
-ip_regex = re.compile(r'Src: ([\d\.]*), Dst: ([\d\.]*)')
+ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
 debug = False
 ascii_non_printable = re.compile(r'[\x00-\x09\x0b-\x0c\x0e-\x1f]')
@@ -451,7 +451,10 @@ def import_pdml(file_path, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm
         return None
     for idx,packet in enumerate(root.iter('packet')):
         frame_number = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
-        ip_showname = packet.find("proto[@name='ip']").attrib['showname']
+        try:
+            ip_showname = packet.find("proto[@name='ip']").attrib['showname']
+        except:
+            ip_showname = packet.find("proto[@name='ipv6']").attrib['showname']
         ip_match = ip_regex.search(ip_showname)
         ip_src = ip_match.group(1)
         ip_dst = ip_match.group(2)
