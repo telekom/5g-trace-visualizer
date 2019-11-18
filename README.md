@@ -46,7 +46,7 @@ Run ``python trace_visualizer.py --help`` for a list of all available parameters
 
 ### HTTP/2 trace
 
-While at some point it would be nice to have real 5G traces as examples, it is currently not possible to post those. They typically contain intra-NF communication and/or protocol specifics. So they are not easy to come by.
+While at some point it would be nice to have real 5G traces as examples, it is currently not possible to post those. They typically contain intra-NF communication and/or proprietary protocol specifics. So they are not easy to come by.
 
 As alternative, we will use the sample HTTP/2 capture from the [Wireshark wiki](https://wiki.wireshark.org/HTTP2) and show you how to use the application with the [``http2-h2c.pcap``](https://wiki.wireshark.org/HTTP2?action=AttachFile&do=get&target=http2-h2c.pcap) file
 
