@@ -23,8 +23,7 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="tests\pdml.py" />
-    <Compile Include="tests\pods_yaml.py">
+    <Compile Include="tests\wireshark.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="trace_visualizer.py" />
@@ -33,14 +32,10 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="tests\" />
-    <Folder Include="tests\files\" />
+    <Content Include="requirements.txt" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="requirements.txt" />
-    <Content Include="tests\files\allPods_09132019.yaml" />
-    <Content Include="tests\files\Registration-PDU-Session-Establishment_light.pdml" />
-    <Content Include="tests\files\worker1 AMF-NSSF.pdml" />
+    <Folder Include="tests\" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

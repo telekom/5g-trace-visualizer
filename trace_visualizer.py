@@ -20,6 +20,7 @@ ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
 debug = False
 ascii_non_printable = re.compile(r'[\x00-\x09\x0b-\x0c\x0e-\x1f]')
+http_payload_for_stream = re.compile(r'HTTP/2 stream ([\d]+) payload')
 
 # https://www.w3schools.com/colors/colors_picker.asp
 color_actors    = '#e6e6e6'
@@ -43,6 +44,8 @@ http_method_regex = re.compile(r':method: (.*)')
 http2_string_unescape = False
 
 plant_uml_jar = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plantuml.jar')
+
+max_ascii_length_for_http_payload = 5000
 
 def find_nas_proto(ngap_pdu):
     if ngap_pdu is None:
@@ -138,25 +141,125 @@ def parse_nas_proto(frame_number, el):
     nas_5g_json_str = '\n'.join(nas_5g_json_all)
     return nas_5g_json_str
 
+# HTTP/2 data fragments
+packet_data_fragments = {}
+def get_http2_fragments(frame_number, stream_id):
+    if frame_number not in packet_data_fragments:
+        packet_data_fragments[frame_number] = {}
+    stream_fragments = packet_data_fragments[frame_number]
+    if stream_id not in stream_fragments:
+        stream_fragments[stream_id] = []
+
+    return stream_fragments[stream_id]
+
+def add_http2_fragment(frame_number, stream_id, fragment):
+    if (frame_number is None) or (stream_id is None):
+        print('Frame {0}: cannot add fragment for stream {1}'.format(frame_number, stream_id))
+        return False
+    fragment_list = get_http2_fragments(frame_number, stream_id)
+    fragment_list.append(fragment)
+    print('Frame {0}: {2} fragments for stream {1}'.format(frame_number, stream_id, len(fragment_list)))
+    return True
+
 def parse_http_proto(frame_number, el):
-    headers    = el.findall("field[@name='http2.stream']/field[@name='http2.type'][@showname='Type: HEADERS (1)']/../field[@name='http2.header']")
-    data       = el.find("field[@name='http2.stream']/field[@name='http2.type'][@showname='Type: DATA (0)']/../field[@name='http2.data.data']")
-    reassembly = el.find("field[@name='http2.stream']/field[@name='http2.type'][@showname='Type: DATA (0)']/../field[@name='http2.body.reassembled.in']")
+    streams = el.findall("field[@name='http2.stream']")
+    parsed_streams = [parse_http_proto_stream(frame_number, stream) for stream in streams]
+    parsed_streams = [e for e in parsed_streams if e is not None]
+    parsed_streams = [format_http2_line_breaks(e) for e in parsed_streams]
+
+    # Remove duplicated lines (there may be several DATA frames showing the same metadata)
+    seen = set()
+    result = []
+    for item in parsed_streams:
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+
+    payload_stream_matches = [http_payload_for_stream.match(e) for e in result]
+    scan_list = list(enumerate(payload_stream_matches))
+    scan_list.reverse()
+    result_final = [None] * len(result)
+    streams_seen = set()
+
+    for idx, match in scan_list:
+        if match is None:
+            result_final[idx] = result[idx]
+        else:
+            stream_id = match.group(1)
+            if stream_id not in streams_seen:
+                streams_seen.add(stream_id)
+                result_final[idx] = result[idx]
+            else:
+                print('Frame {0}: multiple DATA frames for stream {1}. frame {2} in HTTP/2 frame'.format(frame_number, stream_id, idx))
+                result_final[idx] = ''
+
+    result_final = [e for e in result_final if e != '']
+    full_text = '\n'.join(result_final)
+    return full_text
+
+def format_http2_line_breaks(e):
+    # Do not add a line separator if it is only a one-lines
+    if e.count('\n') > 1:
+        return e + '\n'
+    return e
+
+def parse_http_proto_stream(frame_number, stream_el):
+    stream_id_el = stream_el.find("field[@name='http2.streamid']")
+    if stream_id_el is None:
+        return None
+    stream_id = stream_id_el.attrib['show']
+
+    headers          = stream_el.findall("field[@name='http2.type'][@showname='Type: HEADERS (1)']/../field[@name='http2.header']")
+    data             = stream_el.find("field[@name='http2.type'][@showname='Type: DATA (0)']/../field[@name='http2.data.data']")
+    former_fragments = stream_el.find("field[@name='http2.body.fragments']")
+
+    # Filter out frames such as SETTINGS
+    if len(headers)==0 and (data is None):
+        return None
+
+    # Filter out empty DATA frames
+    if (data is not None) and (data.attrib['size'] == '0'):
+        print('Frame {0}: Stream {1}, empty DATA frame'.format(frame_number, stream_id))
+        return None
+    
+    # IF there is reassembly, where it is to be reassembled
+    # <field name="http2.body.reassembled.in" showname="Reassembled body in frame: 11" size="0" pos="192" show="11"/>
+    reassembly_frame = stream_el.find("field[@name='http2.type'][@showname='Type: DATA (0)']/../field[@name='http2.body.reassembled.in']")
+    if reassembly_frame is not None:
+        reassembly_frame = reassembly_frame.attrib['show']
+    fragmented_packet = reassembly_frame is not None
 
     header_list = []
-    if headers is not None:
-        header_list = [(header.find("field[@name='http2.header.name']").attrib["show"], header.find("field[@name='http2.header.value']").attrib["show"]) for header in headers]
+    if len(headers)>0:
+        header_list.append(('HTTP/2 stream', '{0}'.format(stream_id)))
+        header_list.extend([(header.find("field[@name='http2.header.name']").attrib["show"], header.find("field[@name='http2.header.value']").attrib["show"]) for header in headers])
 
     # Return None if there are not headers and the data is reassembled later on (just a data fragment)
-    if reassembly is not None:
-        frame_number_for_reassembly = reassembly.attrib['show']
-        if (len(header_list) == 0) and (frame_number_for_reassembly != frame_number):
-            return None
+    # Save fragment for later reassembly
+    if reassembly_frame is not None:
+        if not add_http2_fragment(reassembly_frame, stream_id, data):
+            print('Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
+    else:
+        # No reassembly
+        reassembly_frame = frame_number
 
     data_ascii = ''
-    if (data is not None) and ((reassembly is None) or (frame_number_for_reassembly == frame_number)):
+    json_data  = False
+    if (data is not None) and ((reassembly_frame == frame_number) or (former_fragments is not None)):
         try:
-            data_hex = data.attrib['value']
+            prior_data = ''
+            try:
+                # Get, concatenate and clear cache for framents for this frame number
+                former_fragments = get_http2_fragments(frame_number, stream_id)
+                prior_data = ''.join([data.attrib['value'] for data in former_fragments])
+                print('Frame {0}: Joined {1} prior HTTP/2 fragments'.format(frame_number, len(former_fragments)))
+            except:
+                print('Could not join HTTP/2 fragments in frame {0}'.format(frame_number))
+                traceback.print_exc()
+            
+            current_data = data.attrib['value']
+            data_hex = prior_data + current_data
+
             # Try first ascii decoding, then if it fails, the default one (UTF-8)
             http_data_as_hex = bytearray.fromhex(data_hex)
             try:
@@ -171,12 +274,24 @@ def parse_http_proto(frame_number, el):
                 # If JSON, format nicely
                 parsed_json = json.loads(data_ascii)
                 data_ascii  = json.dumps(parsed_json, indent=2, sort_keys=False)
+                json_data   = True
             except:
                 print('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
         except:
             # If data is marked as missing, then there is no data
             print('Frame {0}: could not get HTTP/2 payload. Probably missing'.format(frame_number))
             pass
+
+    if fragmented_packet and (reassembly_frame != frame_number):
+        data_ascii = 'HTTP/2 stream {0}: payload reassembled in Frame {1}'.format(stream_id, reassembly_frame)
+    elif data_ascii != '':
+        data_ascii = 'HTTP/2 stream {0} payload\n'.format(stream_id) + data_ascii
+
+    if (len(data_ascii) > max_ascii_length_for_http_payload) and not json_data:
+        original_length = len(data_ascii)
+        data_ascii = data_ascii[0:max_ascii_length_for_http_payload]
+        data_ascii += '\n[...]\n{0} characters truncated'.format(original_length-len(data_ascii))
+        print('Frame {0}: Truncated too long payload message')
 
     http2_request = ''
     if len(header_list) > 0:
@@ -188,6 +303,10 @@ def parse_http_proto(frame_number, el):
         http2_request = http2_request + '\n\n'
     if data_ascii != '':
         http2_request = http2_request + data_ascii
+    # Escape creole syntax and hyperlinks
+    http2_request = http2_request.replace('--','~--')
+    http2_request = http2_request.replace('**','~**')
+    http2_request = http2_request.replace(']]','&#93;]')
     return http2_request
 
 def generate_order(uses):
@@ -237,14 +356,17 @@ def packet_to_str(packet):
             note_color = ' {0}'.format(color_http2_req)
             protocol = protocol + ' req.'
 
-        match = http_url_regex.search(packet[4]) 
-        if match is not None:
+        match = list(http_url_regex.finditer(packet[4]))
+        if len(match) > 0:
             method = ''
-            method_match = http_method_regex.search(packet[4])
-            if method_match is not None:
+            method_match_all = http_method_regex.finditer(packet[4])
+            protocols = []
+            for idx,method_match in enumerate(method_match_all):
                 method = '{0} '.format(method_match.group(1))
-            url_split = match.group(1).split('?')
-            protocol = '{0}\\n{1} {2}'.format(protocol, method, url_split[0])
+                url_split = match[idx].group(1).split('?')
+                protocols.append('{0} {1}'.format(method, url_split[0]))
+            protocol = '{0}\\n'.format(protocol) + '\\n'.join(protocols)
+
     elif 'PFCP' in protocol:
         if pfcp_req_regex.search(packet[4]) is not None:
             note_color = ' {0}'.format(color_pfcp_req)
@@ -718,8 +840,8 @@ if __name__ == '__main__':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
 
-    output_pdml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers)
+    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers)
 
     if args.svg:
         print('Converting .puml files to SVG')
-        output_files_as_svg(output_pdml_files)
+        output_files_as_svg(output_puml_files)

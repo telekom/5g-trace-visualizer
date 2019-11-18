@@ -4,6 +4,7 @@
   * [Summary](#summary)
   * [Requirements](#requirements)
   * [Application structure](#application-structure)
+  * [Examples](#examples)
 
 # Summary
 
@@ -29,3 +30,13 @@ It was born from the need to automatically convert 5G traces into something read
 The figure below summarizes what this small application does ([SVG](doc/summary.svg), [PNG](doc/summary.png), [Mermaid](doc/summary.mermaid))
 
 ![Application structure](doc/summary.png)
+
+## Examples
+
+While at some point it would be nice to have real 5G traces as examples, it is currently not possible to post those. They typically contain intra-NF communication and/or protocol specifics. So they are not easy to come by.
+
+As alternative, we will use the sample HTTP/2 capture from the [Wireshark wiki](https://wiki.wireshark.org/HTTP2) and show you how to use the application with the [``http2-h2c.pcap``](https://wiki.wireshark.org/HTTP2?action=AttachFile&do=get&target=http2-h2c.pcap) file
+
+As shown in Wireshark, the capture should look as shown below:
+
+![HTTP/2 capture](doc/http2_capture.png)
