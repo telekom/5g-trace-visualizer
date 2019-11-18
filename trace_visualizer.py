@@ -152,13 +152,13 @@ def get_http2_fragments(frame_number, stream_id):
 
     return stream_fragments[stream_id]
 
-def add_http2_fragment(frame_number, stream_id, fragment):
+def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
     if (frame_number is None) or (stream_id is None):
-        print('Frame {0}: cannot add fragment for stream {1}'.format(frame_number, stream_id))
+        print('Frame {0}: cannot add fragment for frame {1}, stream {2}'.format(current_frame_number, frame_number, stream_id))
         return False
     fragment_list = get_http2_fragments(frame_number, stream_id)
     fragment_list.append(fragment)
-    print('Frame {0}: {2} fragments for stream {1}'.format(frame_number, stream_id, len(fragment_list)))
+    print('Frame {0}: {3} fragments for frame {1} stream {2}'.format(current_frame_number, frame_number, stream_id, len(fragment_list)))
     return True
 
 def parse_http_proto(frame_number, el):
@@ -236,8 +236,10 @@ def parse_http_proto_stream(frame_number, stream_el):
 
     # Return None if there are not headers and the data is reassembled later on (just a data fragment)
     # Save fragment for later reassembly
+    added_current_fragment_to_cache = False
     if reassembly_frame is not None:
-        if not add_http2_fragment(reassembly_frame, stream_id, data):
+        added_current_fragment_to_cache = add_http2_fragment(reassembly_frame, stream_id, data, frame_number)
+        if not added_current_fragment_to_cache:
             print('Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
     else:
         # No reassembly
@@ -248,16 +250,22 @@ def parse_http_proto_stream(frame_number, stream_el):
     if (data is not None) and ((reassembly_frame == frame_number) or (former_fragments is not None)):
         try:
             prior_data = ''
+            current_data = data.attrib['value']
+
             try:
                 # Get, concatenate and clear cache for framents for this frame number
                 former_fragments = get_http2_fragments(frame_number, stream_id)
+                # Seen sometimes that the fragments are repeated in the http2.data.data part
+                if len(former_fragments)>0:
+                    if former_fragments[-1].attrib['value']==current_data:
+                        former_fragments = former_fragments[0:-2]
+
                 prior_data = ''.join([data.attrib['value'] for data in former_fragments])
                 print('Frame {0}: Joined {1} prior HTTP/2 fragments'.format(frame_number, len(former_fragments)))
             except:
                 print('Could not join HTTP/2 fragments in frame {0}'.format(frame_number))
                 traceback.print_exc()
             
-            current_data = data.attrib['value']
             data_hex = prior_data + current_data
 
             # Try first ascii decoding, then if it fails, the default one (UTF-8)
