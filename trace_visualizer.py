@@ -41,7 +41,7 @@ http_rsp_regex    = re.compile(r'status: ([\d]{3})')
 http_url_regex    = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
 
-http2_string_unescape = False
+http2_string_unescape = True
 
 plant_uml_jar = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plantuml.jar')
 
@@ -217,8 +217,8 @@ def parse_http_proto_stream(frame_number, stream_el):
     if len(headers)==0 and (data is None):
         return None
 
-    # Filter out empty DATA frames
-    if (data is not None) and (data.attrib['size'] == '0'):
+    # Filter out empty DATA frames if there are no headers
+    if (len(headers)==0) and (data is not None) and (data.attrib['size'] == '0'):
         print('Frame {0}: Stream {1}, empty DATA frame'.format(frame_number, stream_id))
         return None
     
@@ -304,7 +304,8 @@ def parse_http_proto_stream(frame_number, stream_el):
     http2_request = ''
     if len(header_list) > 0:
         if http2_string_unescape:
-            http2_request = http2_request + '\n'.join(['{0}: {1}'.format(header[0],urllib.parse.unquote(header[1])) for header in header_list])
+            unescaped_headers = '\n'.join(['{0}: {1}'.format(header[0],urllib.parse.unquote(header[1])) for header in header_list])
+            http2_request = http2_request + unescaped_headers
         else:
             http2_request = http2_request + '\n'.join(['{0}: {1}'.format(header[0],header[1]) for header in header_list])
     if (data_ascii != '') and (http2_request != ''):
@@ -800,7 +801,6 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 if __name__ == '__main__':
-
     print('Searching for plantuml.jar under {0}'.format(plant_uml_jar))
     if os.path.exists(plant_uml_jar):
         print('Found plantuml.jar\n')
