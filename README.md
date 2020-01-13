@@ -13,7 +13,7 @@
 
 # Summary
 
-This set of Python scripts allow you to convert ``pcap``, ``pcapnp`` or ``pdml`` 5G protocol traces ([Wireshark](https://www.wireshark.org/), [tcpdump](https://www.tcpdump.org/), ...) into SVG sequence diagrams.
+This set of Python scripts allow you to convert ``pcap``, ``pcapng`` or ``pdml`` 5G protocol traces ([Wireshark](https://www.wireshark.org/), [tcpdump](https://www.tcpdump.org/), ...) into SVG sequence diagrams.
 
 It was born from the need to automatically convert 5G traces into something readable given that we needed to account for:
 * Mix of HTTP/2, 5G-NAS and PFCP protocols
