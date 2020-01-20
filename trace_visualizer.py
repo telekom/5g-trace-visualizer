@@ -71,7 +71,7 @@ def find_nas_proto(ngap_pdu):
     return all_nas
 
 def xml2json(root):
-    def recusiv(the_root):
+    def recursiv(the_root):
         out = {}
         children_list      = list(the_root)
         number_of_children = len(children_list)
@@ -84,7 +84,7 @@ def xml2json(root):
                 child_to_traverse = child
 
                 # Recursively call this function
-                data_to_append = recusiv(child_to_traverse)
+                data_to_append = recursiv(child_to_traverse)
 
                 # Make the JSON smaller by removing non-useful tags
                 if (child_name=='ngap.ProtocolIE_Field_element' or child_name=='') and (number_of_children == 1):
@@ -101,9 +101,20 @@ def xml2json(root):
 
                 out[child_name].append(data_to_append)
             else:
-                out[child_name] = child.attrib["showname"]
+                try:
+                    if 'showname' in child.attrib:
+                        out[child_name] = child.attrib["showname"]
+                    elif 'show' in child.attrib:
+                        out[child_name] = child.attrib["show"]
+                    else:
+                        out[child_name] = ''
+                except:
+                    print('ERROR: could not find "showname" attribute for following element')
+                    child_str = ET.tostring(child)
+                    print(child_str)
+                    out[child_name] = 'ERROR'
         return out
-    parsed_tree = recusiv(root)
+    parsed_tree = recursiv(root)
     return parsed_tree
 
 def nas_5g_proto_to_dict(nas_5g_proto):
@@ -568,13 +579,54 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping):
     new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0)
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
-def import_pdml(file_path, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None):
-    print('Importing {0}'.format(file_path))
+def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None):
+    print('PDML file path(s): {0}'.format(file_paths))
+
+    # First file is the main PDML file. Rest are alternatives
+    file_path = file_paths[0]
+    if len(file_paths) > 1:
+        alternative_file_paths = file_paths[1:]
+    else:
+        alternative_file_paths = []
+
+    print('Importing main file {0}'.format(file_path))
     if not os.path.exists(file_path):
         print('File does not exist')
         return None
     tree = ET.parse(file_path)
     root = tree.getroot()
+
+    print('Importing {0} alternative files'.format(len(alternative_file_paths)))
+    alternative_packet_iterators = []
+    for alternative_file_path in alternative_file_paths:
+        print('Alternative PDML file: {0}'.format(alternative_file_path))
+        alternative_tree = ET.parse(alternative_file_path)
+        alternative_root = alternative_tree.getroot()
+        alternative_packet_iterators.append(list(alternative_root.iter('packet')))
+
+    # Check for packets with "showname="[Malformed Packet" and substitute with alternative version if so required
+    filtered_root_packets = []
+    print('Checking for malformed packets (can decode with more than one WS version)')
+    for idx,packet in enumerate(root.iter('packet')):
+        packet_is_malformed = (packet.find("proto[@name='_ws.malformed']") is not None)
+        if not packet_is_malformed:
+            filtered_root_packets.append(packet)
+        else:
+            # Find candidate
+            print('WARNING: Packet {0} is malformed'.format(idx))
+            alternative_found = False
+            for alternative_packet_iterator in alternative_packet_iterators:
+                alternative_packet = alternative_packet_iterator[idx]
+                alternative_packet_is_malformed = (alternative_packet.find("proto[@name='_ws.malformed']") is not None)
+                if not alternative_packet_is_malformed:
+                    print('Alternative for packet {0} found'.format(idx))
+                    filtered_root_packets.append(alternative_packet)
+                    alternative_found = True
+                    continue
+            # No candidate found
+            if not alternative_found:
+                print('Alternative for packet {0} not found. Using original packet'.format(idx))
+                filtered_root_packets.append(packet)
 
     packet_descriptions = []
     destinations = set()
@@ -584,7 +636,7 @@ def import_pdml(file_path, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm
     else:
         print('Root tag is "pdml": ERROR')
         return None
-    for idx,packet in enumerate(root.iter('packet')):
+    for idx,packet in enumerate(filtered_root_packets):
         frame_number = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
         try:
             ip_showname = packet.find("proto[@name='ip']").attrib['showname']
@@ -720,11 +772,20 @@ def import_pdml(file_path, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm
 
     return output_files
 
-def call_wireshark(wireshark_version, input_file_str, http2ports_string):
+def call_wireshark(wireshark_versions, input_file_str, http2ports_string):
+    wireshark_versions_list = [e.strip() for e in wireshark_versions.split(',') ]
+    output_files = []
+    for wireshark_version in wireshark_versions_list:
+        output_file = call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string)
+        output_files.append(output_file)
+    return output_files
+
+def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string):
     input_files = input_file_str.split(',')
+    merged = False
     if len(input_files)>1:
         filename, file_extension = os.path.splitext(input_files[0])
-        output_filename = '{0}_merged{1}'.format(filename, file_extension)
+        output_filename = '{0}_{2}_merged{1}'.format(filename, file_extension, wireshark_version)
         mergecap_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark', 'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark', 'mergecap.exe')
         mergecap_command = [ 
             mergecap_path, 
@@ -737,6 +798,7 @@ def call_wireshark(wireshark_version, input_file_str, http2ports_string):
         print(mergecap_command)
         subprocess.run(mergecap_command)
         input_file = output_filename
+        merged = True
     else:
         input_file = input_files[0]
 
@@ -745,7 +807,10 @@ def call_wireshark(wireshark_version, input_file_str, http2ports_string):
         print('No need to invoke tshark. PDML file already input')
         return input_file
     tshark_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark', 'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark', 'tshark.exe')
-    output_file = '{0}.pdml'.format(filename)
+    if not merged:
+        output_file = '{0}_{1}.pdml'.format(filename, wireshark_version)
+    else:
+        output_file = '{0}.pdml'.format(filename)
     #tshark_command = '"{0}" -r "{1}" -2 -d tcp.port==8080,http2 -d tcp.port==3000,http2 -Y "(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp" -T pdml -J "http2 ngap pfcp"'.format(tshark_path, input_file)
     # Some port combinations we saw so far from different vendors
     # Maybe as "to do" would be to add it as a command-line option
@@ -775,6 +840,8 @@ def call_wireshark(wireshark_version, input_file_str, http2ports_string):
     print(tshark_command)
     with open(output_file, "w") as outfile:
         subprocess.run(tshark_command, stdout=outfile)
+
+    print('Output {0}'.format(output_file))
     return output_file
 
 def output_files_as_svg(output_files):
@@ -817,7 +884,7 @@ if __name__ == '__main__':
     parser.add_argument('-limit', type=int, required=False, default=100, help="Maximum number of messages to show per diagram. If more are found, several partial diagrams will be generated. Default is 150. Note that setting this value to a too big value may cause a memory crash in PlantUML")
     parser.add_argument('-svg', type=str2bool, required=False, default=True, help="Whether the PUML files should be converted to SVG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'True")
     parser.add_argument('-pfcpheartbeat', type=str2bool, required=False, default=False, help='Whether to show PFCP heartbeats in the diagram. Default is "False"')
-    parser.add_argument('-wireshark', type=str, required=False, default='none', help="If other that 'none' (default), specifies a Wireshark portable version to be used to decode the input file if that file is a not a PDML file")
+    parser.add_argument('-wireshark', type=str, required=False, default='none', help="If other that 'none' (default), specifies a Wireshark portable version (or list of versions) to be used to decode the input file if that file is a not a PDML file. If more than one version specified, the first one will be used as main version. Other versions will be used as alternatives in case Wireshark reports a malformed packet")
     parser.add_argument('-http2ports', type=str, required=False, default='32445,5002,5000,32665,80,32077,5006,8080,3000', help="Comma-separated list (no spaces) of port numbers that are to be decoded as HTTP/2 by the Wireshark dissectors. Only applied for non-PDML inputs")
     parser.add_argument('-unescapehttp', type=str2bool, required=False, default=True, help='Whether to unescape HTTP headers so that e.g. "target-plmn=%%7B%%22mcc%%22%%3A%%22405%%22%%2C%%22mnc%%22%%3A%%2205%%22%%7D" is shown as "target-plmn={"mcc":"405","mnc":"05"}". Defaults to "True"')
     parser.add_argument('-openstackservers', type=str, required=False, help='YAML descriptor (path to the file) describing all of the VMs in the setup (i.e. server elements, each with a list of interfaces)')

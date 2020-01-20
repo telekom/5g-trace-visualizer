@@ -10,6 +10,7 @@
     * [Adding pod data](#adding-pod-data)
     * [Merging capture files](#merging-capture-files)
     * [Specifying HTTP/2 ports](#specifying-http2-ports)
+    * [Using several Wireshark versions for decoding](#using-several-wireshark-versions-for-decoding)
 
 # Summary
 
@@ -84,6 +85,16 @@ Do note that this will only give you a useful output if you time-synchronized th
 ### Specifying HTTP/2 ports
 
 Just use the ``-http2ports`` ports parameters. E.g. ``-http2ports "3000,80"`` tells Wireshark to decode communication on those ports as HTTP/2. Useful if you are using non-standard ports for your communication.
+
+### Using several Wireshark versions for decoding
+
+While testing a product under heavy development, you may find the case where some NAS messages follow a certain 3GPP release while some other messages follow another.
+
+This may result in no single Wireshark version capable of decoding all messages. i.e., you will always have some ``[Malformed packet]`` payloads shown no matter what version you use.
+
+In order to enable packet decoding using multiple Wireshark versions, use the option ``-wireshark <comma-separated-list-of-wireshark-versions>``.
+
+Example: ``-wireshark "2.9.0,3.1.0"`` will use Wireshark 2.9.0 as baseline dissector and the rest, in this case 3.1.0 as alternative. In case a malformed packet is detected for a given packet, the first non-malformed alternative (in this case 3.1.0, you may specify more) will be used instead.
 
 ## Notes
 
