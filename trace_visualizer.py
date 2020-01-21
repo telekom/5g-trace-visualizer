@@ -172,9 +172,9 @@ def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
     print('Frame {0}: {3} fragments for frame {1} stream {2}'.format(current_frame_number, frame_number, stream_id, len(fragment_list)))
     return True
 
-def parse_http_proto(frame_number, el):
+def parse_http_proto(frame_number, el, ignorehttpheaders_list):
     streams = el.findall("field[@name='http2.stream']")
-    parsed_streams = [parse_http_proto_stream(frame_number, stream) for stream in streams]
+    parsed_streams = [parse_http_proto_stream(frame_number, stream, ignorehttpheaders_list) for stream in streams]
     parsed_streams = [e for e in parsed_streams if e is not None]
     parsed_streams = [format_http2_line_breaks(e) for e in parsed_streams]
 
@@ -214,7 +214,7 @@ def format_http2_line_breaks(e):
         return e + '\n'
     return e
 
-def parse_http_proto_stream(frame_number, stream_el):
+def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
     stream_id_el = stream_el.find("field[@name='http2.streamid']")
     if stream_id_el is None:
         return None
@@ -311,6 +311,9 @@ def parse_http_proto_stream(frame_number, stream_el):
         data_ascii = data_ascii[0:max_ascii_length_for_http_payload]
         data_ascii += '\n[...]\n{0} characters truncated'.format(original_length-len(data_ascii))
         print('Frame {0}: Truncated too long payload message')
+
+    # Filter out HTTP/2 headers that are in the exclude list
+    header_list = [ header for header in header_list if header[0] not in ignorehttpheaders_list ]
 
     http2_request = ''
     if len(header_list) > 0:
@@ -579,8 +582,14 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping):
     new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0)
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
-def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None):
+def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None, ignorehttpheaders=None):
     print('PDML file path(s): {0}'.format(file_paths))
+
+    if ignorehttpheaders is None:
+        ignorehttpheaders_list = []
+    else:
+        ignorehttpheaders_list = [ e.strip() for e in ignorehttpheaders.split(',') ]
+        print('HTTP/2 headers to ignore: {0}'.format(ignorehttpheaders_list))
 
     # First file is the main PDML file. Rest are alternatives
     file_path = file_paths[0]
@@ -673,7 +682,7 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
             print('Frame {0} ({4}): {1} to {2}, {3}'.format(idx, ip_src, ip_dst, protocols_str, frame_number))
         msg_description = ''
         if packet_has_http2:
-            http2_request = parse_http_proto(frame_number, http2_proto)
+            http2_request = parse_http_proto(frame_number, http2_proto, ignorehttpheaders_list)
             if debug:
                 print('SBI')
                 print(http2_request)
@@ -888,6 +897,8 @@ if __name__ == '__main__':
     parser.add_argument('-http2ports', type=str, required=False, default='32445,5002,5000,32665,80,32077,5006,8080,3000', help="Comma-separated list (no spaces) of port numbers that are to be decoded as HTTP/2 by the Wireshark dissectors. Only applied for non-PDML inputs")
     parser.add_argument('-unescapehttp', type=str2bool, required=False, default=True, help='Whether to unescape HTTP headers so that e.g. "target-plmn=%%7B%%22mcc%%22%%3A%%22405%%22%%2C%%22mnc%%22%%3A%%2205%%22%%7D" is shown as "target-plmn={"mcc":"405","mnc":"05"}". Defaults to "True"')
     parser.add_argument('-openstackservers', type=str, required=False, help='YAML descriptor (path to the file) describing all of the VMs in the setup (i.e. server elements, each with a list of interfaces)')
+    parser.add_argument('-ignorehttpheaders', type=str, required=False, help='Comma-separated list of HTTP/2 headers to be omitted from the figures. e.g. "x-b3-traceid,x-b3-spanid" will not show these headers in the generated SVG files')
+
     args = parser.parse_args()
     
 
@@ -904,6 +915,7 @@ if __name__ == '__main__':
     print('Debug: {0}'.format(args.debug))
     print('String un-escaping for HTTP requests: {0}'.format(args.unescapehttp))
     print('OpenStack servers file: {0}'.format(args.openstackservers))
+    print('HTTP/2 headers to ignore: {0}'.format(args.ignorehttpheaders))
     print()
     
     http2_string_unescape = args.unescapehttp
@@ -919,7 +931,7 @@ if __name__ == '__main__':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
 
-    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers)
+    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers, args.ignorehttpheaders)
 
     if args.svg:
         print('Converting .puml files to SVG')

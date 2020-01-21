@@ -11,6 +11,7 @@
     * [Merging capture files](#merging-capture-files)
     * [Specifying HTTP/2 ports](#specifying-http2-ports)
     * [Using several Wireshark versions for decoding](#using-several-wireshark-versions-for-decoding)
+    * [Omitting HTTP/2 headers](#omitting-http2-headers)
 
 # Summary
 
@@ -95,6 +96,14 @@ This may result in no single Wireshark version capable of decoding all messages.
 In order to enable packet decoding using multiple Wireshark versions, use the option ``-wireshark <comma-separated-list-of-wireshark-versions>``.
 
 Example: ``-wireshark "2.9.0,3.1.0"`` will use Wireshark 2.9.0 as baseline dissector and the rest, in this case 3.1.0 as alternative. In case a malformed packet is detected for a given packet, the first non-malformed alternative (in this case 3.1.0, you may specify more) will be used instead.
+
+### Omitting HTTP/2 headers
+
+It may happen that you have a lot of additional headers and that they make the generated figures less readable. In this case, you can use the ``ignorehttpheaders`` option.
+
+Example: ``-ignorehttpheaders "x-forwarded-for,x-forwarded-proto,x-envoy-internal,x-request-id,x-istio-attributes,x-b3-traceid,x-b3-spanid,x-b3-sampled"``
+
+Omits each of the HTTP/2 headers in the list from the generated figures.
 
 ## Notes
 
