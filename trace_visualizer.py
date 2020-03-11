@@ -80,6 +80,10 @@ def xml2json(root):
             child_name = child.attrib["name"]
             number_of_grandchildren = len(list(child))
             if number_of_grandchildren > 0:
+                # Avoid '' child name if possible
+                if child_name == '' and 'show' in child.attrib:
+                    child_name = child.attrib['show']
+
                 if child_name not in out:
                     out[child_name] = []
                 child_to_traverse = child
@@ -104,11 +108,13 @@ def xml2json(root):
             else:
                 try:
                     if 'showname' in child.attrib:
-                        out[child_name] = child.attrib["showname"]
+                        field_content = child.attrib["showname"]
                     elif 'show' in child.attrib:
-                        out[child_name] = child.attrib["show"]
+                        field_content = child.attrib["show"]
                     else:
-                        out[child_name] = ''
+                        field_content = ''
+                        
+                    out[child_name] = field_content
                 except:
                     print('ERROR: could not find "showname" attribute for following element')
                     child_str = ET.tostring(child)
@@ -448,7 +454,7 @@ def order_participants(participants, packet_descriptions_str):
     participants_ordered = []
 
     # UEs are the ones sending NAS registration requests
-    ue_participants = set([packet[1] for packet in packet_descriptions_str if 'Registration request (0x41)' in packet[3]])
+    ue_participants = set([packet[1] for packet in packet_descriptions_str if 'Registration request (0x41)' in packet[3] or 'PDU session establishment request (0xc1)' in packet[3] or 'Deregistration request (UE originating) (0x45)' in packet[3]])
 
     # NFs
     amf_n1_participants   = set([packet[2] for packet in packet_descriptions_str if 'NGAP req.' in packet[3]])
@@ -458,7 +464,7 @@ def order_participants(participants, packet_descriptions_str):
     upf_pfcp_participants = set([packet[2] for packet in packet_descriptions_str if 'PFCP req.' in packet[3]])
     ausf_sbi_participants = set([packet[2] for packet in packet_descriptions_str if ':path: /ausf/' in packet[0] or ':path: /nausf' in packet[0]])
     udm_sbi_participants  = set([packet[2] for packet in packet_descriptions_str if ':path: /udm/' in packet[0] or ':path: /nudm' in packet[0]])
-    udr_sbi_participants  = set([packet[2] for packet in packet_descriptions_str if ':path: /udr/' in packet[0] or ':path: /nudr' in packet[0]])
+    ndl_sbi_participants  = set([packet[2] for packet in packet_descriptions_str if ':path: /udr/' in packet[0] or ':path: /nudr' in packet[0] or ':path: /nudsf' in packet[0]])
     nrf_sbi_participants  = set([packet[2] for packet in packet_descriptions_str if ':path: /nrf/' in packet[0] or ':path: /nnrf' in packet[0]])
 
     # Order one-by-one
@@ -471,13 +477,13 @@ def order_participants(participants, packet_descriptions_str):
     move_from_list_to_list(participants, participants_ordered, upf_pfcp_participants)
     move_from_list_to_list(participants, participants_ordered, ausf_sbi_participants)
     move_from_list_to_list(participants, participants_ordered, udm_sbi_participants)
-    move_from_list_to_list(participants, participants_ordered, udr_sbi_participants)
+    move_from_list_to_list(participants, participants_ordered, ndl_sbi_participants)
     move_from_list_to_list(participants, participants_ordered, nrf_sbi_participants)
     move_from_list_to_list(participants, participants_ordered, None)
 
     return participants_ordered
 
-def output_puml(output_file, participants, packet_descriptions, print_legend):
+def output_puml(output_file, packet_descriptions, print_legend, participants = None):
     # Generate packet descriptions, as we first want to check participants
     packet_descriptions_str = [ packet_to_str(packet) for packet in packet_descriptions ];
     participants = order_participants(participants, packet_descriptions_str)
@@ -777,20 +783,20 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
     for output_to_generate in outputs_to_generate:
         suffix              = output_to_generate[0]
         packet_descriptions = output_to_generate[1]
-        participants        = output_to_generate[2]
         print_legend        = output_to_generate[3]
+        participants        = output_to_generate[2]
 
         packet_descriptions_slices = [packet_descriptions[i:i + limit] for i in range(0, len(packet_descriptions), limit)]
         if len(packet_descriptions_slices) == 0:
             pass
         elif len(packet_descriptions_slices) == 1:
             output_file = os.path.join(dirname, '{0}{1}.puml'.format(file, suffix))
-            output_puml(output_file, participants, packet_descriptions_slices[0], print_legend)
+            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants)
             output_files.append(output_file)
         else:
             for counter,packet_descriptions_slice in enumerate(packet_descriptions_slices):
                 output_file = os.path.join(dirname, '{0}{1}_{2:03d}.puml'.format(file, suffix, counter))
-                output_puml(output_file, participants, packet_descriptions_slice, print_legend)
+                output_puml(output_file, packet_descriptions_slice, print_legend, participants)
                 output_files.append(output_file)
 
     return output_files
