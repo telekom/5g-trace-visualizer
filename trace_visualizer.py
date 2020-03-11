@@ -15,6 +15,7 @@ import argparse
 import traceback
 import yaml_parser
 import urllib.parse
+import yaml
 
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
@@ -34,8 +35,8 @@ color_pfcp_rsp  = '#cce0ff'
 pfcp_req_regex = re.compile(r'\"pfcp\.msg_type\": \".*[Rr]equest.*\"')
 pfcp_message_type_regex = re.compile(r'\"pfcp\.msg_type\": \"Message Type: (.*)\"')
 
-nas_req_regex           = re.compile(r'\"nas_5gs\..*message_type\": \".*[Rr]equest.*\"')
-nas_message_type_regex  = re.compile(r'\"nas_5gs\..*message_type\": \"Message type: (.*)\"')
+nas_req_regex           = re.compile(r"nas_5gs\..*message_type: '.*[Rr]equest.*'")
+nas_message_type_regex  = re.compile(r"nas_5gs\..*message_type: 'Message type: (.*)'")
 
 http_rsp_regex    = re.compile(r'status: ([\d]{3})')
 http_url_regex    = re.compile(r':path: (.*)')
@@ -155,7 +156,7 @@ def parse_nas_proto(frame_number, el):
     nas_5g_json_all = []
     for nas_5g_proto in nas_5g_protos:
         nas_5g_dict = nas_5g_proto_to_dict(nas_5g_proto)
-        nas_5g_json_all.append(json.dumps(nas_5g_dict, indent=2, sort_keys=False))
+        nas_5g_json_all.append(yaml.dump(nas_5g_dict, indent=4, width=1000, sort_keys=False))
     nas_5g_json_str = '\n'.join(nas_5g_json_all)
     
     # Add NGAP PDU session to the transcription
@@ -637,7 +638,8 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
     filtered_root_packets = []
     print('Checking for malformed packets (can decode with more than one WS version)')
     for idx,packet in enumerate(root.iter('packet')):
-        packet_is_malformed = (packet.find("proto[@name='_ws.malformed']") is not None)
+        # Note that _ws.malformed is always in the packet root while _ws.expert errors are found within the packet
+        packet_is_malformed = (packet.find("proto[@name='_ws.malformed']") is not None) #or (packet.find(".//field[@name='_ws.expert']") is not None)
         if not packet_is_malformed:
             filtered_root_packets.append(packet)
         else:
