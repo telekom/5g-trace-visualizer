@@ -639,7 +639,7 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
     print('Checking for malformed packets (can decode with more than one WS version)')
     for idx,packet in enumerate(root.iter('packet')):
         # Note that _ws.malformed is always in the packet root while _ws.expert errors are found within the packet
-        packet_is_malformed = (packet.find("proto[@name='_ws.malformed']") is not None) #or (packet.find(".//field[@name='_ws.expert']") is not None)
+        packet_is_malformed = (packet.find("proto[@name='_ws.malformed']") is not None) or (packet.find(".//field[@name='_ws.expert']") is not None)
         if not packet_is_malformed:
             filtered_root_packets.append(packet)
         else:
@@ -857,6 +857,11 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     for port in port_list:
         tshark_command.append('-d')
         tshark_command.append('tcp.port=={0},http2'.format(port))
+
+    # Add 5GS null ciphering decode (WS versions >=3)
+    if int(wireshark_version[0]) > 2:
+        tshark_command.append('-o')
+        tshark_command.append('nas-5gs.null_decipher: TRUE')
 
     tshark_command.extend([ 
        '-Y',
