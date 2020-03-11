@@ -46,6 +46,7 @@ http2_string_unescape = True
 plant_uml_jar = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plantuml.jar')
 
 max_ascii_length_for_http_payload = 5000
+max_ascii_length_for_json_param   = 250
 
 def find_nas_proto(ngap_pdu):
     if ngap_pdu is None:
@@ -150,6 +151,13 @@ def parse_nas_proto(frame_number, el):
         nas_5g_dict = nas_5g_proto_to_dict(nas_5g_proto)
         nas_5g_json_all.append(json.dumps(nas_5g_dict, indent=2, sort_keys=False))
     nas_5g_json_str = '\n'.join(nas_5g_json_all)
+    
+    # Add NGAP PDU session to the transcription
+    try:
+        nas_5g_json_str = 'NGAP-PDU: {0}\n{1}'.format(ngap_pdu.attrib['value'], nas_5g_json_str)
+    except:
+        print('Frame {0}: Could not add NGAP PDU session payload'.format(frame_number))
+    
     return nas_5g_json_str
 
 # HTTP/2 data fragments
@@ -292,6 +300,10 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
             try:
                 # If JSON, format nicely
                 parsed_json = json.loads(data_ascii)
+
+                #Limit JSON parameter length for nicer output
+                parsed_json = filter_long_json_params(parsed_json, max_ascii_length_for_json_param)
+
                 data_ascii  = json.dumps(parsed_json, indent=2, sort_keys=False)
                 json_data   = True
             except:
@@ -332,19 +344,21 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
     http2_request = http2_request.replace(']]','&#93;]')
     return http2_request
 
-def generate_order(uses):
-    use_order = ['AN', 'N1', 'amf', 'nnssf', 'nnrf', 'smf', 'udm', 'nausf', 'udr', 'udsf']
-    if len(uses) == 0:
-        return 0
-    orders = []
-    for idx,use in enumerate(uses):
-        for order,category in enumerate(use_order):
-            if category in use:
-                orders.append(order+1)
-                break
-    if len(orders) == 0:
-        orders = [ 0 ]
-    return min(orders)
+def filter_long_json_params(parsed_json, max_ascii_length_for_json_param):
+    parsed_json_list = list(parsed_json.items())
+    for k,v in parsed_json_list:
+        done_something = False
+        if isinstance(v, dict):
+            v = filter_long_json_params(v, max_ascii_length_for_json_param)
+            done_something = True
+        elif isinstance(v, str):
+            if len(v) > max_ascii_length_for_json_param:
+                v = '{0}[...] Truncated to {1} chars. Total length: {2}'.format(v[0:max_ascii_length_for_json_param], max_ascii_length_for_json_param, len(v))
+                done_something = True
+        if done_something:
+            parsed_json[k] = v
+
+    return parsed_json;
 
 def packet_to_str(packet):
     protocol = packet[3]
@@ -433,8 +447,8 @@ def order_participants(participants, packet_descriptions_str):
     # The order is UEs, AMF-NAS, AMF, SMF, NRF, UPF, AUSF, rest
     participants_ordered = []
 
-    # UEs are the ones sending NAS requests
-    ue_participants = set([packet[1] for packet in packet_descriptions_str if 'NGAP req.' in packet[3]])
+    # UEs are the ones sending NAS registration requests
+    ue_participants = set([packet[1] for packet in packet_descriptions_str if 'Registration request (0x41)' in packet[3]])
 
     # NFs
     amf_n1_participants   = set([packet[2] for packet in packet_descriptions_str if 'NGAP req.' in packet[3]])
@@ -730,9 +744,9 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         participant_description = ''
         if len(uses)!=0:
             joined_uses = '\\n'.join(uses) + '\\n({0})'.format(destination)
-            participants.append((participant_type, '"{0}" as {1}'.format(joined_uses, destination), destination, uses, None)) # generate_order(uses)))
+            participants.append((participant_type, '"{0}" as {1}'.format(joined_uses, destination), destination, uses, None))
         else:
-            participants.append((participant_type, '"{0}"'.format(destination),                     destination, uses, None)) #  generate_order(uses)))
+            participants.append((participant_type, '"{0}"'.format(destination),                     destination, uses, None))
 
     # Participant sorting now moved to the end (PUML generation)
     # participants = sorted(participants, key=lambda x: x[4])
