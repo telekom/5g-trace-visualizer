@@ -670,8 +670,15 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         return None
     for idx,packet in enumerate(filtered_root_packets):
         frame_number = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
-        # Fixes #1, thanks cfalcken!
+        # Fixes #1 and #3, thanks cfalcken!
         # I wonder what would happen if we have IP-in-IP with different IP versions, but I wonder if anyone will really do something like that...
+        ipv4_protos = packet.findall("proto[@name='ip']")
+        ipv6_protocs = packet.findall("proto[@name='ipv6']")
+        # Skip ARP and similars (see #3). Should only happen if you directly import a PDML file.
+        if len(ipv4_protos)==0 and len(ipv6_protocs)==0:
+            print('Skipping non-IP packet {0}'.format(idx))
+            continue
+
         try:
             ip_showname = packet.findall("proto[@name='ip']")[-1].attrib['showname']
         except:
