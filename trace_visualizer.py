@@ -670,10 +670,12 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         return None
     for idx,packet in enumerate(filtered_root_packets):
         frame_number = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
+        # Fixes #1, thanks cfalcken!
+        # I wonder what would happen if we have IP-in-IP with different IP versions, but I wonder if anyone will really do something like that...
         try:
-            ip_showname = packet.find("proto[@name='ip']").attrib['showname']
+            ip_showname = packet.findall("proto[@name='ip']")[-1].attrib['showname']
         except:
-            ip_showname = packet.find("proto[@name='ipv6']").attrib['showname']
+            ip_showname = packet.findall("proto[@name='ipv6']")[-1].attrib['showname']
         ip_match = ip_regex.search(ip_showname)
         ip_src = ip_match.group(1)
         ip_dst = ip_match.group(2)
