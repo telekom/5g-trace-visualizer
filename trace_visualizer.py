@@ -16,6 +16,7 @@ import traceback
 import yaml_parser
 import urllib.parse
 import yaml
+from packaging import version
 
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
@@ -859,9 +860,14 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         tshark_command.append('tcp.port=={0},http2'.format(port))
 
     # Add 5GS null ciphering decode (WS versions >=3)
-    if int(wireshark_version[0]) > 2:
+    print('Using Wireshark version {0}'.format(wireshark_version))
+    
+    if version.parse(wireshark_version) >= version.parse('3.0.0'):
+        print('Wireshark supports nas-5gs.null_decipher option. Applying')
         tshark_command.append('-o')
         tshark_command.append('nas-5gs.null_decipher: TRUE')
+    else:
+        print('Wireshark version <3.0.0. Not applying nas-5gs.null_decipher option. Applying')
 
     tshark_command.extend([ 
        '-Y',
