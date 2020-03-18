@@ -871,13 +871,15 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     else:
         print('Wireshark version <3.0.0. Not applying nas-5gs.null_decipher option. Applying')
 
+    # Added disabling name resolution (see #2). Reference: https://tshark.dev/packetcraft/add_context/name_resolution/
     tshark_command.extend([ 
        '-Y',
        '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp',
        '-T',
        'pdml',
        '-J',
-       'http2 ngap pfcp'
+       'http2 ngap pfcp',
+       '-n'
        ])
 
     print('Generating PDML files from PCAP to {0}'.format(output_file))
