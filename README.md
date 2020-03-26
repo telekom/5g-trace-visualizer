@@ -98,6 +98,8 @@ In order to enable packet decoding using multiple Wireshark versions, use the op
 
 Example: ``-wireshark "2.9.0,3.1.0"`` will use Wireshark 2.9.0 as baseline dissector and the rest, in this case 3.1.0 as alternative. In case a malformed packet is detected for a given packet, the first non-malformed alternative (in this case 3.1.0, you may specify more) will be used instead.
 
+You also have the option to use the OS-installed Wireshark version by using as version string ``OS``. In this case, the script will not generate a full path for the ``tshark`` executable but rather a call to ``subprocess.run()`` without a full path and only the command itself.
+
 ### Omitting HTTP/2 headers
 
 It may happen that you have a lot of additional headers and that they make the generated figures less readable. In this case, you can use the ``ignorehttpheaders`` option.

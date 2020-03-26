@@ -847,7 +847,13 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     if file_extension == '.pdml':
         print('No need to invoke tshark. PDML file already input')
         return input_file
-    tshark_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark', 'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark', 'tshark.exe')
+
+    # Add option to not use a Wireshark portable version but rather the OS-installed one
+    if wireshark_version=='OS':
+        tshark_path = file_name = os.path.join('tshark')
+    else:
+        tshark_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark', 'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark', 'tshark')
+
     if not merged:
         output_file = '{0}_{1}.pdml'.format(filename, wireshark_version)
     else:
@@ -871,7 +877,8 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     # Add 5GS null ciphering decode (WS versions >=3)
     print('Using Wireshark version {0}'.format(wireshark_version))
     
-    if version.parse(wireshark_version) >= version.parse('3.0.0'):
+    # Assume that a current Wireshark version is installed in the machine
+    if wireshark_version=='OS' or (version.parse(wireshark_version) >= version.parse('3.0.0')):
         print('Wireshark supports nas-5gs.null_decipher option. Applying')
         tshark_command.append('-o')
         tshark_command.append('nas-5gs.null_decipher: TRUE')
@@ -937,7 +944,7 @@ if __name__ == '__main__':
     parser.add_argument('-limit', type=int, required=False, default=100, help="Maximum number of messages to show per diagram. If more are found, several partial diagrams will be generated. Default is 150. Note that setting this value to a too big value may cause a memory crash in PlantUML")
     parser.add_argument('-svg', type=str2bool, required=False, default=True, help="Whether the PUML files should be converted to SVG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'True")
     parser.add_argument('-pfcpheartbeat', type=str2bool, required=False, default=False, help='Whether to show PFCP heartbeats in the diagram. Default is "False"')
-    parser.add_argument('-wireshark', type=str, required=False, default='none', help="If other that 'none' (default), specifies a Wireshark portable version (or list of versions) to be used to decode the input file if that file is a not a PDML file. If more than one version specified, the first one will be used as main version. Other versions will be used as alternatives in case Wireshark reports a malformed packet")
+    parser.add_argument('-wireshark', type=str, required=False, default='none', help="If other that 'none' (default), specifies a Wireshark portable version (or list of versions) to be used to decode the input file if that file is a not a PDML file. If more than one version specified, the first one will be used as main version. Other versions will be used as alternatives in case Wireshark reports a malformed packet. 'OS' can be used as version number if you do not want to use a specific Wireshark version but rather the OS-installed Wireshark/tshark version you have within your PATH")
     parser.add_argument('-http2ports', type=str, required=False, default='32445,5002,5000,32665,80,32077,5006,8080,3000', help="Comma-separated list (no spaces) of port numbers that are to be decoded as HTTP/2 by the Wireshark dissectors. Only applied for non-PDML inputs")
     parser.add_argument('-unescapehttp', type=str2bool, required=False, default=True, help='Whether to unescape HTTP headers so that e.g. "target-plmn=%%7B%%22mcc%%22%%3A%%22405%%22%%2C%%22mnc%%22%%3A%%2205%%22%%7D" is shown as "target-plmn={"mcc":"405","mnc":"05"}". Defaults to "True"')
     parser.add_argument('-openstackservers', type=str, required=False, help='YAML descriptor (path to the file) describing all of the VMs in the setup (i.e. server elements, each with a list of interfaces)')
