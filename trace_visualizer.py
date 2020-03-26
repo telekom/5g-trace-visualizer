@@ -16,6 +16,7 @@ import traceback
 import yaml_parser
 import urllib.parse
 import yaml
+import platform
 from packaging import version
 
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
@@ -827,7 +828,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     if len(input_files)>1:
         filename, file_extension = os.path.splitext(input_files[0])
         output_filename = '{0}_{2}_merged{1}'.format(filename, file_extension, wireshark_version)
-        mergecap_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark', 'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark', 'mergecap.exe')
+        mergecap_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark', 'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark', 'mergecap')
         mergecap_command = [ 
             mergecap_path, 
             '-w', 
@@ -906,7 +907,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
 def output_files_as_svg(output_files):
     for counter,output_file in enumerate(output_files):
-        plant_uml_command = 'java -jar "{0}" "{1}"'.format(plant_uml_jar, output_file)
+        plant_uml_command = 'java -Djava.awt.headless=true -jar "{0}" "{1}"'.format(plant_uml_jar, output_file)
         if debug:
             plant_uml_command = '{0} -v'.format(plant_uml_command)
         generate_svg = '{0} -tsvg'.format(plant_uml_command)
@@ -935,6 +936,9 @@ if __name__ == '__main__':
         print('NOT FOUND')
         print("Please follow the instruction in README.md and go to http://plantuml.com/download to download PlantUML's JAR file")
         sys.exit(2)
+
+    platform = platform.system()
+    print('Platform system detected: {0}'.format(platform))
 
     parser = argparse.ArgumentParser(
         description='5G Wireshark trace visualizer for 5G protocol. Generates a .puml PlantUML file based on the specified PDML file. The output file is output in the same directory as the specified PDML file. Optionally, a Kubernetes pod file (YAML) can be used to further map trace IPs to pod names and namespaces')
