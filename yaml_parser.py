@@ -58,7 +58,17 @@ def load_yaml(file_path):
         except:
             traceback.print_exc()
             print('Could not parse IPs from pod metadata')
+
     # Mapping of IPs to pod/namespace
+    reverse_mapping = dict()
+    for k,v in ip_to_pod_mapping.items():
+        if v not in reverse_mapping:
+            reverse_mapping[v] = []
+        reverse_mapping[v].append(k)
+    print('K8s IP mapping:')
+    for k,v in reverse_mapping.items():
+        print('  {0}: {1}'.format(k, v))
+    print()
     return ip_to_pod_mapping
 
 def load_yaml_vm(file_path):
@@ -93,5 +103,15 @@ def load_yaml_vm(file_path):
             except:
                 traceback.print_exc()
                 print('Could not parse IPs from VM metadata for server {0}'.format(server_name))
-    # Mapping of IPs to VM names
+
+    # Mapping of IPs to k8s names
+    reverse_mapping = dict()
+    for k,v in ip_to_server_mapping.items():
+        if v not in reverse_mapping:
+            reverse_mapping[v] = []
+        reverse_mapping[v].append(k)
+    print('VM IP mapping:')
+    for k,v in reverse_mapping.items():
+        print('  {0}: {1}'.format(k, v))
+    print()
     return ip_to_server_mapping
