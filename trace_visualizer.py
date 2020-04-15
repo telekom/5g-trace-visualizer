@@ -369,7 +369,7 @@ def filter_long_json_params(parsed_json, max_ascii_length_for_json_param):
 
     return parsed_json;
 
-def packet_to_str(packet, simple_diagrams=False):
+def packet_to_str(packet, simple_diagrams=False, force_show_frames=''):
     protocol = packet[3]
     note_color = ''
     packet_str = ''
@@ -429,10 +429,12 @@ def packet_to_str(packet, simple_diagrams=False):
         if match is not None:
             protocol = '{0}\\n{1}'.format(protocol, match.group(1))
 
-    packet_str = packet_str + '"{0}" -> "{1}": {2}, {3}\n'.format(packet[0], packet[1], packet[2], protocol)
+    frame_number = packet[2]
+    packet_str = packet_str + '"{0}" -> "{1}": {2}, {3}\n'.format(packet[0], packet[1], frame_number, protocol)
     packet_str = packet_str + '\nnote right{0}\n'.format(note_color)
 
-    if simple_diagrams:
+    force_show_frames = [ e.strip() for e in force_show_frames.split(',') ]
+    if simple_diagrams and frame_number not in force_show_frames:
         packet_payload = ''
     else:
         packet_payload = packet[4]
@@ -492,10 +494,17 @@ def order_participants(participants, packet_descriptions_str):
 
     return participants_ordered
 
-def output_puml(output_file, packet_descriptions, print_legend, participants=None, simple_diagrams=False):
+def output_puml(output_file, packet_descriptions, print_legend, participants=None, simple_diagrams=False, force_show_frames=''):
     # Generate packet descriptions, as we first want to check participants
-    packet_descriptions_str = [ packet_to_str(packet, simple_diagrams) for packet in packet_descriptions ];
-    participants = order_participants(participants, packet_descriptions_str)
+    packet_descriptions_str = [ packet_to_str(packet, simple_diagrams, force_show_frames) for packet in packet_descriptions ];
+
+    print('Simple diagrams: {0}'.format(simple_diagrams))
+    if simple_diagrams:
+        packet_descriptions_str_for_ordering = [ packet_to_str(packet, simple_diagrams=False) for packet in packet_descriptions ]
+    else:
+        packet_descriptions_str_for_ordering = packet_descriptions_str
+
+    participants = order_participants(participants, packet_descriptions_str_for_ordering)
 
     print('Outputting PlantUML file to {0}'.format(output_file))
     with open(output_file, 'w') as f:
@@ -611,7 +620,7 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping):
     new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0)
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
-def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output='', simple_diagrams=False):
+def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output='', simple_diagrams=False, force_show_frames=''):
     print('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -818,13 +827,13 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         # All packets fit into one file
         elif len(packet_descriptions_slices) == 1:
             output_file = os.path.join(dirname, '{0}{1}.puml'.format(file, suffix))
-            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants, simple_diagrams)
+            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants, simple_diagrams, force_show_frames)
             output_files.append(output_file)
         # Several files (many messages)
         else:
             for counter,packet_descriptions_slice in enumerate(packet_descriptions_slices):
                 output_file = os.path.join(dirname, '{0}{1}_{2:03d}.puml'.format(file, suffix, counter))
-                output_puml(output_file, packet_descriptions_slice, print_legend, participants, simple_diagrams)
+                output_puml(output_file, packet_descriptions_slice, print_legend, participants, simple_diagrams, force_show_frames)
                 output_files.append(output_file)
 
     return output_files
@@ -970,6 +979,7 @@ if __name__ == '__main__':
     parser.add_argument('-ignorehttpheaders', type=str, required=False, help='Comma-separated list of HTTP/2 headers to be omitted from the figures. e.g. "x-b3-traceid,x-b3-spanid" will not show these headers in the generated SVG files')
     parser.add_argument('-diagrams', type=str, required=False, default='ip,k8s_pod,k8s_namespace', help='Comma-separated list of diagram types you want to output. Options: "ip": original IP-based packet trace, "k8s_pod": groups messages based on pod IP addresses, "k8s_namespace": groups messages based on namespace IP addresses. Defaults to "ip,k8s_pod,k8s_namespace"')
     parser.add_argument('-simple_diagrams', type=str2bool, required=False, default=False, help="Whether to output simpler diagrams without a payload body. Defaults to 'False")
+    parser.add_argument('-force_show_frames', type=str, required=False, default='', help="Comma-separated list of frame numbers that even if using the simple_diagrams option you would want to be fully shown")
 
     args = parser.parse_args()
     
@@ -990,6 +1000,7 @@ if __name__ == '__main__':
     print('HTTP/2 headers to ignore: {0}'.format(args.ignorehttpheaders))
     print('Diagrams to output: {0}'.format(args.diagrams))
     print('Simple diagrams: {0}'.format(args.simple_diagrams))
+    print('Force show frames if using simple diagrams: {0}'.format(args.force_show_frames))
     print()
     
     http2_string_unescape = args.unescapehttp
@@ -1005,7 +1016,7 @@ if __name__ == '__main__':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
 
-    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams, args.simple_diagrams)
+    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams, args.simple_diagrams, args.force_show_frames)
 
     if args.svg:
         print('Converting .puml files to SVG')
