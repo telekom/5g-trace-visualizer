@@ -605,7 +605,7 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping):
     new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0)
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
-def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None, ignorehttpheaders=None):
+def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output=''):
     print('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -770,7 +770,9 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
     # Participant sorting now moved to the end (PUML generation)
     # participants = sorted(participants, key=lambda x: x[4])
 
-    outputs_to_generate = [ ('', packet_descriptions, participants, True) ]
+    # Three types of output: ip (plain), k8s_pod, k8s_namespace
+    outputs_to_generate = {}
+    outputs_to_generate['ip'] = ('', packet_descriptions, participants, True)
 
     # Pod information if  available
     if pod_mapping is not None:
@@ -780,20 +782,25 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         if ip_to_pod_mapping is not None:
             participants_per_pod, packet_descriptions_per_pod             = substitute_pod_ips_with_name(participants, packet_descriptions, ip_to_pod_mapping)
             participants_per_namespace, packet_descriptions_per_namespace = substitute_pod_ips_with_namespace(participants, packet_descriptions, ip_to_pod_mapping)
-        outputs_to_generate.append(('_pod', packet_descriptions_per_pod, participants_per_pod, False))
-        outputs_to_generate.append(('_namespace', packet_descriptions_per_namespace, participants_per_namespace, False))
+        outputs_to_generate['k8s_pod']       = ('_pod', packet_descriptions_per_pod, participants_per_pod, False)
+        outputs_to_generate['k8s_namespace'] = ('_namespace', packet_descriptions_per_namespace, participants_per_namespace, False)
 
     if vm_mapping is not None:
         ip_to_vm_mapping = yaml_parser.load_yaml_vm(vm_mapping)
-        outputs_to_generate = [ map_vm_ips(output_to_generate, ip_to_vm_mapping) for output_to_generate in outputs_to_generate ]
+        outputs_to_generate = { k : map_vm_ips(output_to_generate, ip_to_vm_mapping) for k,output_to_generate in outputs_to_generate.items() }
 
     # Generate PlantUML diagram
     dirname,file_name = os.path.split(file_path)
     file,ext = os.path.splitext(file_name)
 
     # Generate outputs for all of the generated mappings
+    diagrams_to_output = [e.strip() for e in diagrams_to_output.split(',') ]
     output_files = []
-    for output_to_generate in outputs_to_generate:
+    for k,output_to_generate in outputs_to_generate.items():
+        if k not in diagrams_to_output:
+            print('Skipping generating Plant UML file for {0}'.format(k))
+            continue
+        print('Generating Plant UML file for {0}'.format(k))
         suffix              = output_to_generate[0]
         packet_descriptions = output_to_generate[1]
         print_legend        = output_to_generate[3]
@@ -802,10 +809,12 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         packet_descriptions_slices = [packet_descriptions[i:i + limit] for i in range(0, len(packet_descriptions), limit)]
         if len(packet_descriptions_slices) == 0:
             pass
+        # All packets fit into one file
         elif len(packet_descriptions_slices) == 1:
             output_file = os.path.join(dirname, '{0}{1}.puml'.format(file, suffix))
             output_puml(output_file, packet_descriptions_slices[0], print_legend, participants)
             output_files.append(output_file)
+        # Several files (many messages)
         else:
             for counter,packet_descriptions_slice in enumerate(packet_descriptions_slices):
                 output_file = os.path.join(dirname, '{0}{1}_{2:03d}.puml'.format(file, suffix, counter))
@@ -953,6 +962,7 @@ if __name__ == '__main__':
     parser.add_argument('-unescapehttp', type=str2bool, required=False, default=True, help='Whether to unescape HTTP headers so that e.g. "target-plmn=%%7B%%22mcc%%22%%3A%%22405%%22%%2C%%22mnc%%22%%3A%%2205%%22%%7D" is shown as "target-plmn={"mcc":"405","mnc":"05"}". Defaults to "True"')
     parser.add_argument('-openstackservers', type=str, required=False, help='YAML descriptor (path to the file) describing all of the VMs in the setup (i.e. server elements, each with a list of interfaces)')
     parser.add_argument('-ignorehttpheaders', type=str, required=False, help='Comma-separated list of HTTP/2 headers to be omitted from the figures. e.g. "x-b3-traceid,x-b3-spanid" will not show these headers in the generated SVG files')
+    parser.add_argument('-diagrams', type=str, required=False, default='ip,k8s_pod,k8s_namespace', help='Comma-separated list of diagram types you want to output. Options: "ip": original IP-based packet trace, "k8s_pod": groups messages based on pod IP addresses, "k8s_namespace": groups messages based on namespace IP addresses. Defaults to "ip,k8s_pod,k8s_namespace"')
 
     args = parser.parse_args()
     
@@ -971,6 +981,7 @@ if __name__ == '__main__':
     print('String un-escaping for HTTP requests: {0}'.format(args.unescapehttp))
     print('OpenStack servers file: {0}'.format(args.openstackservers))
     print('HTTP/2 headers to ignore: {0}'.format(args.ignorehttpheaders))
+    print('Diagrams to output: {0}'.format(args.diagrams))
     print()
     
     http2_string_unescape = args.unescapehttp
@@ -986,7 +997,7 @@ if __name__ == '__main__':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
 
-    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers, args.ignorehttpheaders)
+    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams)
 
     if args.svg:
         print('Converting .puml files to SVG')

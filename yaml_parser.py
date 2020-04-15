@@ -65,6 +65,7 @@ def load_yaml(file_path):
         if v not in reverse_mapping:
             reverse_mapping[v] = []
         reverse_mapping[v].append(k)
+    print()
     print('K8s IP mapping:')
     for k,v in reverse_mapping.items():
         print('  {0}: {1}'.format(k, v))
