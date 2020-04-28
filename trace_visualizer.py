@@ -33,12 +33,17 @@ color_http2_req = '#b3b3b3'
 color_http2_rsp = '#e6e6e6'
 color_pfcp_req  = '#80b3ff'
 color_pfcp_rsp  = '#cce0ff'
+color_gtpv2_req = '#fffc42'
+color_gtpv2_rsp = '#fffd99'
 
-pfcp_req_regex = re.compile(r'\"pfcp\.msg_type\": \".*[Rr]equest.*\"')
-pfcp_message_type_regex = re.compile(r'\"pfcp\.msg_type\": \"Message Type: (.*)\"')
+pfcp_req_regex = re.compile(r'pfcp\.msg_type: .*[Rr]equest.*')
+pfcp_message_type_regex = re.compile(r"pfcp\.msg_type: 'Message [tT]ype: (.*)")
 
 nas_req_regex           = re.compile(r"nas_5gs\..*message_type: '.*[Rr]equest.*'")
-nas_message_type_regex  = re.compile(r"nas_5gs\..*message_type: 'Message type: (.*)'")
+nas_message_type_regex  = re.compile(r"nas_5gs\..*message_type: 'Message [tT]ype: (.*)'")
+
+gtpv2_req_regex          = re.compile(r"gtpv2\.message_type: '.*[Rr]equest.*'")
+gtpv2_message_type_regex = re.compile(r"gtpv2\.message_type: 'Message [tT]ype: (.*)'")
 
 http_rsp_regex    = re.compile(r'status: ([\d]{3})')
 http_url_regex    = re.compile(r':path: (.*)')
@@ -132,7 +137,7 @@ def nas_5g_proto_to_dict(nas_5g_proto):
         return {}
     return xml2json(nas_5g_proto)
 
-def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat):
+def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_duplicate_packets, last_pfcp_message):
     try:
         if not pfcp_heartbeat:
             is_heartbeat_req  = nas_5g_proto.find("field[@name='pfcp.msg_type'][@value='01']")
@@ -144,7 +149,19 @@ def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat):
         pass
     
     nas_5g_dict = nas_5g_proto_to_dict(nas_5g_proto)
-    nas_5g_json_str = json.dumps(nas_5g_dict, indent=2, sort_keys=False)
+    nas_5g_json_str = yaml.dump(nas_5g_dict, indent=4, width=1000, sort_keys=False)    
+    
+    if ignore_pfcp_duplicate_packets and (last_pfcp_message is not None):
+        try:
+            # Last lines may have added metadata regarding the reply
+            lines_to_consider = [ e for e in nas_5g_json_str.split('\n') if ('pfcp.response_in:' not in e) and ('pfcp.response_to:' not in e) and ('pfcp.response_time:' not in e) ]
+            pfcp_message_to_compare_minus_last_line = '\n'.join(lines_to_consider)
+            if (last_pfcp_message == pfcp_message_to_compare_minus_last_line) or (last_pfcp_message == nas_5g_json_str):
+                print('Frame {0}: ignored duplicated PFCP message (same as previous one)'.format(frame_number))
+                return None
+        except:
+            pass
+
     return nas_5g_json_str          
 
 def parse_nas_proto(frame_number, el):
@@ -169,6 +186,27 @@ def parse_nas_proto(frame_number, el):
     
     return nas_5g_json_str
 
+def parse_gtpv2_proto(frame_number, gtpv2_pdu, show_heartbeat):
+    if gtpv2_pdu is None:
+        return ''
+
+    # Option to ignore heartbeats
+    try:
+        if not show_heartbeat:
+            is_heartbeat_req  = gtpv2_pdu.find("field[@name='gtpv2.message_type'][@value='01']")
+            is_heartbeat_resp = gtpv2_pdu.find("field[@name='gtpv2.message_type'][@value='02']")
+            if (is_heartbeat_req is not None) or (is_heartbeat_resp is not None):
+                print('Frame {0}: ignored GTPv2 heartbeat message'.format(frame_number))
+                return None
+    except:
+        pass
+
+    # Dump message content
+    gtpv2_pdu_dict  = nas_5g_proto_to_dict(gtpv2_pdu)
+    nas_5g_json_str = yaml.dump(gtpv2_pdu_dict, indent=4, width=1000, sort_keys=False)
+
+    return nas_5g_json_str
+
 # HTTP/2 data fragments
 packet_data_fragments = {}
 def get_http2_fragments(frame_number, stream_id):
@@ -189,7 +227,17 @@ def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
     print('Frame {0}: {3} fragments for frame {1} stream {2}'.format(current_frame_number, frame_number, stream_id, len(fragment_list)))
     return True
 
-def parse_http_proto(frame_number, el, ignorehttpheaders_list):
+def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
+    # Option to ignore TCP spurious retransmissions
+    try:
+        if ignore_spurious_tcp_retransmissions:
+            is_tcp_spurious  = packet.find("proto[@name='tcp']/field[@name='tcp.analysis']/field[@name='tcp.analysis.flags']/field[@name='_ws.expert'][@showname='Expert Info (Note/Sequence): This frame is a (suspected) spurious retransmission']")
+            if is_tcp_spurious is not None:
+                print('Frame {0}: ignored spurious TCP retransmission'.format(frame_number))
+                return None
+    except:
+        pass
+
     streams = el.findall("field[@name='http2.stream']")
     parsed_streams = [parse_http_proto_stream(frame_number, stream, ignorehttpheaders_list) for stream in streams]
     parsed_streams = [e for e in parsed_streams if e is not None]
@@ -347,6 +395,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
         http2_request = http2_request + '\n\n'
     if data_ascii != '':
         http2_request = http2_request + data_ascii
+
     # Escape creole syntax and hyperlinks
     http2_request = http2_request.replace('--','~--')
     http2_request = http2_request.replace('**','~**')
@@ -429,6 +478,18 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames=''):
         if match is not None:
             protocol = '{0}\\n{1}'.format(protocol, match.group(1))
 
+    elif 'GTPv2' in protocol:
+        if gtpv2_req_regex.search(packet[4]) is not None:
+            note_color = ' {0}'.format(color_gtpv2_req)
+            protocol = protocol + ' req.'
+        else:
+            note_color = ' {0}'.format(color_gtpv2_rsp)
+            protocol = protocol + ' req., rsp. or notification'
+
+        match = gtpv2_message_type_regex.search(packet[4]) 
+        if match is not None:
+            protocol = '{0}\\n{1}'.format(protocol, match.group(1))
+
     frame_number = packet[2]
     packet_str = packet_str + '"{0}" -> "{1}": {2}, {3}\n'.format(packet[0], packet[1], frame_number, protocol)
     packet_str = packet_str + '\nnote right{0}\n'.format(note_color)
@@ -440,9 +501,9 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames=''):
         packet_payload = packet[4]
 
     if packet_payload != '':
-        packet_str = packet_str + '{0} to {1}\n{2}\n'.format(packet[0], packet[1], packet_payload)
+        packet_str = packet_str + '**{0} to {1}**\n{2}\n'.format(packet[0], packet[1], packet_payload)
     else:    
-        packet_str = packet_str + '{0} to {1}\n'.format(packet[0], packet[1])
+        packet_str = packet_str + '**{0} to {1}**\n'.format(packet[0], packet[1])
     packet_str = packet_str + 'end note\n'
     packet_str = packet_str + '\n'
     return (packet_str, packet[0], packet[1], protocol )
@@ -459,8 +520,10 @@ def move_from_list_to_list(origin, destination, criteria):
         destination.append(e)
         origin.remove(e)
 
+    return len(to_move)
 
-def order_participants(participants, packet_descriptions_str):
+
+def order_participants(participants, packet_descriptions_str, force_order_str):
     # The order is UEs, AMF-NAS, AMF, SMF, NRF, UPF, AUSF, rest
     participants_ordered = []
 
@@ -492,9 +555,22 @@ def order_participants(participants, packet_descriptions_str):
     move_from_list_to_list(participants, participants_ordered, nrf_sbi_participants)
     move_from_list_to_list(participants, participants_ordered, None)
 
+    # Reorder participants with force_order list
+    force_order = [e.strip() for e in force_order_str.split(',') ]
+    if len(force_order) > 0:
+        print('Force-ordering participants: {0}'.format(force_order))
+        new_participants_ordered = []
+        for forced_participant_name in force_order:
+            participants_to_move = [p[2] for p in participants_ordered if '"{0}"'.format(forced_participant_name)==p[1] ]
+            moved_n = move_from_list_to_list(participants_ordered, new_participants_ordered, participants_to_move)
+        # Move rest
+        move_from_list_to_list(participants_ordered, new_participants_ordered, None)
+        participants_ordered = new_participants_ordered
+        
+    print('Final participant order: {0}'.format(participants_ordered))
     return participants_ordered
 
-def output_puml(output_file, packet_descriptions, print_legend, participants=None, simple_diagrams=False, force_show_frames=''):
+def output_puml(output_file, packet_descriptions, print_legend, participants=None, simple_diagrams=False, force_show_frames='', force_order=''):
     # Generate packet descriptions, as we first want to check participants
     packet_descriptions_str = [ packet_to_str(packet, simple_diagrams, force_show_frames) for packet in packet_descriptions ];
 
@@ -504,7 +580,7 @@ def output_puml(output_file, packet_descriptions, print_legend, participants=Non
     else:
         packet_descriptions_str_for_ordering = packet_descriptions_str
 
-    participants = order_participants(participants, packet_descriptions_str_for_ordering)
+    participants = order_participants(participants, packet_descriptions_str_for_ordering, force_order)
 
     print('Outputting PlantUML file to {0}'.format(output_file))
     with open(output_file, 'w') as f:
@@ -620,7 +696,7 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping):
     new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0)
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
-def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output='', simple_diagrams=False, force_show_frames=''):
+def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output='', simple_diagrams=False, force_show_frames='', force_order='', ignore_spurious_tcp_retransmissions=True, ignore_pfcp_duplicate_packets=True):
     print('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -684,6 +760,8 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
     else:
         print('Root tag is "pdml": ERROR')
         return None
+
+    last_pfcp_message = None
     for idx,packet in enumerate(filtered_root_packets):
         frame_number = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
         # Fixes #1 and #3, thanks cfalcken!
@@ -706,10 +784,12 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         ngap_proto  = packet.find("proto[@name='ngap']")
         http2_proto = packet.find("proto[@name='http2']")
         pfcp_proto  = packet.find("proto[@name='pfcp']")
+        gtpv2_proto = packet.find("proto[@name='gtpv2']")
 
         packet_has_http2 = False
         packet_has_ngap  = False
         packet_has_pfcp  = False
+        packet_has_gtpv2 = False
 
         protocols = []
         if ngap_proto is not None:
@@ -721,6 +801,9 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         if pfcp_proto is not None:
             packet_has_pfcp = True
             protocols.append('PFCP')
+        if gtpv2_proto is not None:
+            packet_has_gtpv2 = True
+            protocols.append('GTPv2')
         if len(protocols) == 0:
             protocols_str = ''
         else:
@@ -730,7 +813,7 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
             print('Frame {0} ({4}): {1} to {2}, {3}'.format(idx, ip_src, ip_dst, protocols_str, frame_number))
         msg_description = ''
         if packet_has_http2:
-            http2_request = parse_http_proto(frame_number, http2_proto, ignorehttpheaders_list)
+            http2_request = parse_http_proto(frame_number, http2_proto, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet)
             if debug:
                 print('SBI')
                 print(http2_request)
@@ -741,8 +824,15 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
                 print('NAS')
                 print(nas_request)
             msg_description = nas_request
+        if packet_has_gtpv2:
+            gtpv2_request = parse_gtpv2_proto(frame_number, gtpv2_proto, show_heartbeat)
+            if debug:
+                print('GTPv2')
+                print(gtpv2_request)
+            msg_description = gtpv2_request
         if packet_has_pfcp:
-            pfcp_request = parse_pfcp_proto(frame_number, pfcp_proto, pfcp_heartbeat)
+            pfcp_request      = parse_pfcp_proto(frame_number, pfcp_proto, show_heartbeat, ignore_pfcp_duplicate_packets, last_pfcp_message)
+            last_pfcp_message = pfcp_request
             if debug:
                 print('PFCP')
                 print(pfcp_request)
@@ -827,13 +917,13 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, pfcp_heartbeat=False, v
         # All packets fit into one file
         elif len(packet_descriptions_slices) == 1:
             output_file = os.path.join(dirname, '{0}{1}.puml'.format(file, suffix))
-            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants, simple_diagrams, force_show_frames)
+            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants, simple_diagrams, force_show_frames, force_order)
             output_files.append(output_file)
         # Several files (many messages)
         else:
             for counter,packet_descriptions_slice in enumerate(packet_descriptions_slices):
                 output_file = os.path.join(dirname, '{0}{1}_{2:03d}.puml'.format(file, suffix, counter))
-                output_puml(output_file, packet_descriptions_slice, print_legend, participants, simple_diagrams, force_show_frames)
+                output_puml(output_file, packet_descriptions_slice, print_legend, participants, simple_diagrams, force_show_frames, force_order)
                 output_files.append(output_file)
 
     return output_files
@@ -911,13 +1001,14 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         print('Wireshark version <3.0.0. Not applying nas-5gs.null_decipher option. Applying')
 
     # Added disabling name resolution (see #2). Reference: https://tshark.dev/packetcraft/add_context/name_resolution/
+    # Added GTPv2 for N26 messages and TCP to filter out spurious TCP retransmissions
     tshark_command.extend([ 
        '-Y',
-       '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp',
+       '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp or gtpv2',
        '-T',
        'pdml',
        '-J',
-       'http2 ngap pfcp',
+       'http2 ngap pfcp gtpv2 tcp',
        '-n'
        ])
 
@@ -971,7 +1062,8 @@ if __name__ == '__main__':
     parser.add_argument('-debug', type=str2bool, required=False, help="More verbose output. Defaults to 'False'")
     parser.add_argument('-limit', type=int, required=False, default=100, help="Maximum number of messages to show per diagram. If more are found, several partial diagrams will be generated. Default is 150. Note that setting this value to a too big value may cause a memory crash in PlantUML")
     parser.add_argument('-svg', type=str2bool, required=False, default=True, help="Whether the PUML files should be converted to SVG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'True")
-    parser.add_argument('-pfcpheartbeat', type=str2bool, required=False, default=False, help='Whether to show PFCP heartbeats in the diagram. Default is "False"')
+    parser.add_argument('-showheartbeat', type=str2bool, required=False, default=False, help='Whether to show PFCP and GTPv2 heartbeats in the diagram. Default is "False"')
+    parser.add_argument('-ignore_spurious_tcp_retransmissions', type=str2bool, required=False, default=True, help='Whether to ignore HTTP/2 packets marked by Wireshark as spurious TCP retransmissions. Default is "True"')
     parser.add_argument('-wireshark', type=str, required=False, default='none', help="If other that 'none' (default), specifies a Wireshark portable version (or list of versions) to be used to decode the input file if that file is a not a PDML file. If more than one version specified, the first one will be used as main version. Other versions will be used as alternatives in case Wireshark reports a malformed packet. 'OS' can be used as version number if you do not want to use a specific Wireshark version but rather the OS-installed Wireshark/tshark version you have within your PATH")
     parser.add_argument('-http2ports', type=str, required=False, default='32445,5002,5000,32665,80,32077,5006,8080,3000', help="Comma-separated list (no spaces) of port numbers that are to be decoded as HTTP/2 by the Wireshark dissectors. Only applied for non-PDML inputs")
     parser.add_argument('-unescapehttp', type=str2bool, required=False, default=True, help='Whether to unescape HTTP headers so that e.g. "target-plmn=%%7B%%22mcc%%22%%3A%%22405%%22%%2C%%22mnc%%22%%3A%%2205%%22%%7D" is shown as "target-plmn={"mcc":"405","mnc":"05"}". Defaults to "True"')
@@ -980,6 +1072,8 @@ if __name__ == '__main__':
     parser.add_argument('-diagrams', type=str, required=False, default='ip,k8s_pod,k8s_namespace', help='Comma-separated list of diagram types you want to output. Options: "ip": original IP-based packet trace, "k8s_pod": groups messages based on pod IP addresses, "k8s_namespace": groups messages based on namespace IP addresses. Defaults to "ip,k8s_pod,k8s_namespace"')
     parser.add_argument('-simple_diagrams', type=str2bool, required=False, default=False, help="Whether to output simpler diagrams without a payload body. Defaults to 'False")
     parser.add_argument('-force_show_frames', type=str, required=False, default='', help="Comma-separated list of frame numbers that even if using the simple_diagrams option you would want to be fully shown")
+    parser.add_argument('-force_order', type=str, required=False, default='', help="Comma-separated list of labels you want placed first in the diagram's participant list if found in the trace")
+    parser.add_argument('-ignore_pfcp_duplicate_packets', type=str2bool, required=False, default=True, help='Whether to ignore PFCP retransmissions for better readability. Default is "True"')
 
     args = parser.parse_args()
     
@@ -1001,6 +1095,9 @@ if __name__ == '__main__':
     print('Diagrams to output: {0}'.format(args.diagrams))
     print('Simple diagrams: {0}'.format(args.simple_diagrams))
     print('Force show frames if using simple diagrams: {0}'.format(args.force_show_frames))
+    print('Show PFCP/GTPv2 heartbeat messages: {0}'.format(args.showheartbeat))
+    print('Show HTTP/2 in spurious TCP retransmission messages: {0}'.format(args.ignore_spurious_tcp_retransmissions))
+    print('Ignore PFCP packet duplicates: {0}'.format(args.ignore_pfcp_duplicate_packets))
     print()
     
     http2_string_unescape = args.unescapehttp
@@ -1016,7 +1113,7 @@ if __name__ == '__main__':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
 
-    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.pfcpheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams, args.simple_diagrams, args.force_show_frames)
+    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.showheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams, args.simple_diagrams, args.force_show_frames, args.force_order, args.ignore_spurious_tcp_retransmissions, args.ignore_pfcp_duplicate_packets)
 
     if args.svg:
         print('Converting .puml files to SVG')
