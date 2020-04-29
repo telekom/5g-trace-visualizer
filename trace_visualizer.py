@@ -18,12 +18,16 @@ import urllib.parse
 import yaml
 import platform
 from packaging import version
+import collections
+from datetime import datetime
 
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
 debug = False
 ascii_non_printable = re.compile(r'[\x00-\x09\x0b-\x0c\x0e-\x1f]')
 http_payload_for_stream = re.compile(r'HTTP/2 stream ([\d]+) payload')
+
+PacketDescription = collections.namedtuple('PacketDescription', 'ip_src ip_dst frame_number protocols_str msg_description timestamp timestamp_offsett')
 
 # https://www.w3schools.com/colors/colors_picker.asp
 color_actors    = '#e6e6e6'
@@ -418,19 +422,19 @@ def filter_long_json_params(parsed_json, max_ascii_length_for_json_param):
 
     return parsed_json;
 
-def packet_to_str(packet, simple_diagrams=False, force_show_frames=''):
-    protocol = packet[3]
+def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_timestamp=False):
+    protocol = packet.protocols_str
     note_color = ''
     packet_str = ''
     if 'NGAP' in protocol:
-        if nas_req_regex.search(packet[4]) is not None:
+        if nas_req_regex.search(packet.msg_description) is not None:
             note_color = ' {0}'.format(color_nas_req)
             protocol = protocol + ' req.'
         else:
             note_color = ' {0}'.format(color_nas_rsp)
             protocol = protocol + ' or NAS rsp.'
 
-        matches = nas_message_type_regex.finditer(packet[4])
+        matches = nas_message_type_regex.finditer(packet.msg_description)
         message_types = [ match.group(1) for match in matches if match is not None ]
         if len(message_types) > 0:
             # Remove duplicates: https://stackoverflow.com/questions/480214/how-do-you-remove-duplicates-from-a-list-whilst-preserving-order
@@ -440,9 +444,9 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames=''):
             protocol = '{0}\\n{1}'.format(protocol, '\\n'.join(message_types))
     elif 'HTTP' in protocol:
         # Some customized filtering based on what we have seen
-        rsp_match = http_rsp_regex.search(packet[4])
-        req_match = http_url_regex.search(packet[4])
-        if ('404 page not found' in packet[4]) or (rsp_match is not None):
+        rsp_match = http_rsp_regex.search(packet.msg_description)
+        req_match = http_url_regex.search(packet.msg_description)
+        if ('404 page not found' in packet.msg_description) or (rsp_match is not None):
             note_color = ' {0}'.format(color_http2_rsp)
             if rsp_match is not None:
                 protocol = '{0} {1} rsp.'.format(protocol, rsp_match.group(1))
@@ -455,10 +459,10 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames=''):
             note_color = ' {0}'.format(color_http2_req)
             protocol = protocol + ' req. or rsp. (no HTTP/2 headers)'
 
-        match = list(http_url_regex.finditer(packet[4]))
+        match = list(http_url_regex.finditer(packet.msg_description))
         if len(match) > 0:
             method = ''
-            method_match_all = http_method_regex.finditer(packet[4])
+            method_match_all = http_method_regex.finditer(packet.msg_description)
             protocols = []
             for idx,method_match in enumerate(method_match_all):
                 method = '{0} '.format(method_match.group(1))
@@ -467,46 +471,58 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames=''):
             protocol = '{0}\\n'.format(protocol) + '\\n'.join(protocols)
 
     elif 'PFCP' in protocol:
-        if pfcp_req_regex.search(packet[4]) is not None:
+        if pfcp_req_regex.search(packet.msg_description) is not None:
             note_color = ' {0}'.format(color_pfcp_req)
             protocol = protocol + ' req.'
         else:
             note_color = ' {0}'.format(color_pfcp_rsp)
             protocol = protocol + ' rsp.'
 
-        match = pfcp_message_type_regex.search(packet[4]) 
+        match = pfcp_message_type_regex.search(packet.msg_description) 
         if match is not None:
             protocol = '{0}\\n{1}'.format(protocol, match.group(1))
 
     elif 'GTPv2' in protocol:
-        if gtpv2_req_regex.search(packet[4]) is not None:
+        if gtpv2_req_regex.search(packet.msg_description) is not None:
             note_color = ' {0}'.format(color_gtpv2_req)
             protocol = protocol + ' req.'
         else:
             note_color = ' {0}'.format(color_gtpv2_rsp)
             protocol = protocol + ' req., rsp. or notification'
 
-        match = gtpv2_message_type_regex.search(packet[4]) 
+        match = gtpv2_message_type_regex.search(packet.msg_description) 
         if match is not None:
             protocol = '{0}\\n{1}'.format(protocol, match.group(1))
 
+    if show_timestamp:
+        try:
+            dt_object = datetime.fromtimestamp(packet.timestamp)
+            if dt_object.tzinfo is None:
+                tz_str = ''
+            else:
+                tz_str = ' {0}'.format(dt_object.tzinfo)
+            timestamp_hour = ' ({0}:{1}:{2}.{3}{4})'.format(dt_object.hour, dt_object.minute, dt_object.second, dt_object.microsecond/1000, tz_str)
+        except:
+            timestamp_hour = ''
+        protocol = '{0}\\n+{1:.3f}s{2}'.format(protocol, packet.timestamp_offsett, timestamp_hour)
+
     frame_number = packet[2]
-    packet_str = packet_str + '"{0}" -> "{1}": {2}, {3}\n'.format(packet[0], packet[1], frame_number, protocol)
+    packet_str = packet_str + '"{0}" -> "{1}": {2}, {3}\n'.format(packet.ip_src, packet.ip_dst, frame_number, protocol)
     packet_str = packet_str + '\nnote right{0}\n'.format(note_color)
 
     force_show_frames = [ e.strip() for e in force_show_frames.split(',') ]
     if simple_diagrams and frame_number not in force_show_frames:
         packet_payload = ''
     else:
-        packet_payload = packet[4]
+        packet_payload = packet.msg_description
 
     if packet_payload != '':
-        packet_str = packet_str + '**{0} to {1}**\n{2}\n'.format(packet[0], packet[1], packet_payload)
+        packet_str = packet_str + '**{0} to {1}**\n{2}\n'.format(packet.ip_src, packet.ip_dst, packet_payload)
     else:    
-        packet_str = packet_str + '**{0} to {1}**\n'.format(packet[0], packet[1])
+        packet_str = packet_str + '**{0} to {1}**\n'.format(packet.ip_src, packet.ip_dst)
     packet_str = packet_str + 'end note\n'
     packet_str = packet_str + '\n'
-    return (packet_str, packet[0], packet[1], protocol )
+    return (packet_str, packet.ip_src, packet.ip_dst, protocol )
 
 def move_from_list_to_list(origin, destination, criteria):
     if criteria is None:
@@ -570,13 +586,14 @@ def order_participants(participants, packet_descriptions_str, force_order_str):
     print('Final participant order: {0}'.format(participants_ordered))
     return participants_ordered
 
-def output_puml(output_file, packet_descriptions, print_legend, participants=None, simple_diagrams=False, force_show_frames='', force_order=''):
-    # Generate packet descriptions, as we first want to check participants
-    packet_descriptions_str = [ packet_to_str(packet, simple_diagrams, force_show_frames) for packet in packet_descriptions ];
+def output_puml(output_file, packet_descriptions, print_legend, participants=None, simple_diagrams=False, force_show_frames='', force_order='', show_timestamp=False):
+    # Generate full packet descriptions first, as we first want to check participants
+    packet_descriptions_str = [ packet_to_str(packet, simple_diagrams, force_show_frames, show_timestamp) for packet in packet_descriptions ];
 
     print('Simple diagrams: {0}'.format(simple_diagrams))
+    # Second pass if simple diagrams are wanted
     if simple_diagrams:
-        packet_descriptions_str_for_ordering = [ packet_to_str(packet, simple_diagrams=False) for packet in packet_descriptions ]
+        packet_descriptions_str_for_ordering = [ packet_to_str(packet, simple_diagrams=False, show_timestamp=show_timestamp) for packet in packet_descriptions ]
     else:
         packet_descriptions_str_for_ordering = packet_descriptions_str
 
@@ -639,8 +656,8 @@ def generate_new_participants(participants, new_packet_descriptions):
     return new_participants
 
 def packet_sub(packet, mapping, idx):
-    src = packet[0]
-    dst = packet[1]
+    src = packet.ip_src
+    dst = packet.ip_dst
     old_src = src
     old_dst = dst
 
@@ -656,17 +673,17 @@ def packet_sub(packet, mapping, idx):
         return None
     # Return packet with substituted src and dst (e.g. pod name)
     if not sub_done:
-        new_packet = (src, dst, packet[2], packet[3], packet[4])
+        new_packet = PacketDescription(src, dst, packet.frame_number, packet.protocols_str, packet.msg_description, packet.timestamp, packet.timestamp_offsett)
     else:
         try:
-            current_description = packet[4]
+            current_description = packet.msg_description
             if ' (original)\n' not in current_description:
-                new_description = '{0} to {1} (original)\n{2}'.format(old_src, old_dst, packet[4])
+                new_description = '{0} to {1} (original)\n{2}'.format(old_src, old_dst, packet.msg_description)
             else:
-                new_description = packet[4]
+                new_description = packet.msg_description
         except:
-            new_description = '{0} to {1} (original)\n{2}'.format(old_src, old_dst, packet[4])
-        new_packet = (src, dst, packet[2], packet[3], new_description)
+            new_description = '{0} to {1} (original)\n{2}'.format(old_src, old_dst, packet.msg_description)
+        new_packet = PacketDescription(src, dst, packet.frame_number, packet.protocols_str, new_description, packet.timestamp, packet.timestamp_offsett)
     return new_packet
 
 def add_participants_if_not_there(new_participants, participants_to_extend):
@@ -696,7 +713,7 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping):
     new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0)
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
-def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output='', simple_diagrams=False, force_show_frames='', force_order='', ignore_spurious_tcp_retransmissions=True, ignore_pfcp_duplicate_packets=True):
+def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output='', simple_diagrams=False, force_show_frames='', force_order='', ignore_spurious_tcp_retransmissions=True, ignore_pfcp_duplicate_packets=True, show_timestamp=False):
     print('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -762,8 +779,17 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
         return None
 
     last_pfcp_message = None
+    first_timestamp   = None
     for idx,packet in enumerate(filtered_root_packets):
-        frame_number = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
+        frame_number    = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
+        # Extract timestamp
+        try:
+            frame_timestamp = float(packet.find("proto[@name='geninfo']/field[@name='timestamp']").attrib['value'])
+            if first_timestamp is None:
+                first_timestamp = frame_timestamp
+        except:
+            frame_timestamp = None
+
         # Fixes #1 and #3, thanks cfalcken!
         # I wonder what would happen if we have IP-in-IP with different IP versions, but I wonder if anyone will really do something like that...
         ipv4_protos = packet.findall("proto[@name='ip']")
@@ -837,10 +863,16 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
                 print('PFCP')
                 print(pfcp_request)
             msg_description = pfcp_request
-        
+
+        # Calculate timestamp offsett
+        if first_timestamp is not None:
+            frame_offsett = frame_timestamp - first_timestamp
+        else:
+            frame_offsett = None
+
         # None are messages that are deliberately marked as fragments
         if msg_description is not None:
-            packet_descriptions.append((ip_src, ip_dst, frame_number, protocols_str, msg_description))
+            packet_descriptions.append(PacketDescription(ip_src, ip_dst, frame_number, protocols_str, msg_description, frame_timestamp, frame_offsett))
         destinations.add(ip_dst)
         destinations.add(ip_src)
 
@@ -848,8 +880,8 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
 
     # Hypothesis of what each IP is
     for packet_description in packet_descriptions:
-        destination = packet_description[1]
-        description = packet_description[4]
+        destination = packet_description.ip_dst
+        description = packet_description.msg_description
 
         # SBI-based
         if (description is not None) and (description != ''):
@@ -858,7 +890,7 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
                 all_destinations[destination].add(match.group(1))
 
         # NAS
-        if 'NGAP' in packet_description[3]:
+        if 'NGAP' in packet_description.protocols_str:
             all_destinations[destination].add('N1')
 
     # Generate participant descriptions for description and add order (key)
@@ -917,13 +949,13 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
         # All packets fit into one file
         elif len(packet_descriptions_slices) == 1:
             output_file = os.path.join(dirname, '{0}{1}.puml'.format(file, suffix))
-            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants, simple_diagrams, force_show_frames, force_order)
+            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants, simple_diagrams, force_show_frames, force_order, show_timestamp)
             output_files.append(output_file)
         # Several files (many messages)
         else:
             for counter,packet_descriptions_slice in enumerate(packet_descriptions_slices):
                 output_file = os.path.join(dirname, '{0}{1}_{2:03d}.puml'.format(file, suffix, counter))
-                output_puml(output_file, packet_descriptions_slice, print_legend, participants, simple_diagrams, force_show_frames, force_order)
+                output_puml(output_file, packet_descriptions_slice, print_legend, participants, simple_diagrams, force_show_frames, force_order, show_timestamp)
                 output_files.append(output_file)
 
     return output_files
@@ -1074,6 +1106,7 @@ if __name__ == '__main__':
     parser.add_argument('-force_show_frames', type=str, required=False, default='', help="Comma-separated list of frame numbers that even if using the simple_diagrams option you would want to be fully shown")
     parser.add_argument('-force_order', type=str, required=False, default='', help="Comma-separated list of labels you want placed first in the diagram's participant list if found in the trace")
     parser.add_argument('-ignore_pfcp_duplicate_packets', type=str2bool, required=False, default=True, help='Whether to ignore PFCP retransmissions for better readability. Default is "True"')
+    parser.add_argument('-show_timestamp', type=str2bool, required=False, default=False, help='Whether you want to show the message timestamps in the diagram. Default is "False"')
 
     args = parser.parse_args()
     
@@ -1098,6 +1131,7 @@ if __name__ == '__main__':
     print('Show PFCP/GTPv2 heartbeat messages: {0}'.format(args.showheartbeat))
     print('Show HTTP/2 in spurious TCP retransmission messages: {0}'.format(args.ignore_spurious_tcp_retransmissions))
     print('Ignore PFCP packet duplicates: {0}'.format(args.ignore_pfcp_duplicate_packets))
+    print('Show timestamp in diagram: {0}'.format(args.show_timestamp))
     print()
     
     http2_string_unescape = args.unescapehttp
@@ -1113,7 +1147,7 @@ if __name__ == '__main__':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
 
-    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.showheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams, args.simple_diagrams, args.force_show_frames, args.force_order, args.ignore_spurious_tcp_retransmissions, args.ignore_pfcp_duplicate_packets)
+    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.showheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams, args.simple_diagrams, args.force_show_frames, args.force_order, args.ignore_spurious_tcp_retransmissions, args.ignore_pfcp_duplicate_packets, args.show_timestamp)
 
     if args.svg:
         print('Converting .puml files to SVG')
