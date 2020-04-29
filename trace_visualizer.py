@@ -41,7 +41,7 @@ color_gtpv2_req = '#fffc42'
 color_gtpv2_rsp = '#fffd99'
 
 pfcp_req_regex = re.compile(r'pfcp\.msg_type: .*[Rr]equest.*')
-pfcp_message_type_regex = re.compile(r"pfcp\.msg_type: 'Message [tT]ype: (.*)")
+pfcp_message_type_regex = re.compile(r"pfcp\.msg_type: 'Message [tT]ype: (.*)'")
 
 nas_req_regex           = re.compile(r"nas_5gs\..*message_type: '.*[Rr]equest.*'")
 nas_message_type_regex  = re.compile(r"nas_5gs\..*message_type: 'Message [tT]ype: (.*)'")
