@@ -40,6 +40,8 @@ color_pfcp_rsp  = '#cce0ff'
 color_gtpv2_req = '#fffc42'
 color_gtpv2_rsp = '#fffd99'
 
+color_diameter_radius_gtpprime = '#D6A4DE'
+
 pfcp_req_regex = re.compile(r'pfcp\.msg_type: .*[Rr]equest.*')
 pfcp_message_type_regex = re.compile(r"pfcp\.msg_type: 'Message [tT]ype: (.*)'")
 
@@ -494,6 +496,9 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_time
         if match is not None:
             protocol = '{0}\\n{1}'.format(protocol, match.group(1))
 
+    elif 'Diameter' in protocol or 'RADIUS' in protocol or "GTP'" in protocol:
+        note_color = ' {0}'.format(color_diameter_radius_gtpprime)
+
     if show_timestamp:
         try:
             dt_object = datetime.fromtimestamp(packet.timestamp)
@@ -807,15 +812,25 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
         ip_src = ip_match.group(1)
         ip_dst = ip_match.group(2)
 
+        # For 5GC
         ngap_proto  = packet.find("proto[@name='ngap']")
         http2_proto = packet.find("proto[@name='http2']")
         pfcp_proto  = packet.find("proto[@name='pfcp']")
         gtpv2_proto = packet.find("proto[@name='gtpv2']")
 
+        # For EPC
+        diameter_proto = packet.find("proto[@name='diameter']")
+        radius_proto   = packet.find("proto[@name='radius']")
+        gtpprime_proto = packet.find("proto[@name='gtpprime']")
+
         packet_has_http2 = False
         packet_has_ngap  = False
         packet_has_pfcp  = False
         packet_has_gtpv2 = False
+
+        packet_has_diameter = False
+        packet_has_radius   = False
+        packet_has_gtpprime = False
 
         protocols = []
         if ngap_proto is not None:
@@ -830,6 +845,15 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
         if gtpv2_proto is not None:
             packet_has_gtpv2 = True
             protocols.append('GTPv2')
+        if diameter_proto is not None:
+            packet_has_diameter = True
+            protocols.append('Diameter')
+        if radius_proto is not None:
+            packet_has_radius = True
+            protocols.append('RADIUS')
+        if gtpprime_proto is not None:
+            packet_has_gtpprime = True
+            protocols.append("GTP'")
         if len(protocols) == 0:
             protocols_str = ''
         else:
@@ -856,6 +880,24 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
                 print('GTPv2')
                 print(gtpv2_request)
             msg_description = gtpv2_request
+        if diameter_proto:
+            diameter_request = parse_gtpv2_proto(frame_number, diameter_proto, show_heartbeat)
+            if debug:
+                print('Diameter')
+                print(diameter_request)
+            msg_description = diameter_request
+        if radius_proto:
+            radius_request = parse_gtpv2_proto(frame_number, radius_proto, show_heartbeat)
+            if debug:
+                print('RADIUS')
+                print(radius_request)
+            msg_description = radius_request
+        if gtpprime_proto:
+            gtpprime_request = parse_gtpv2_proto(frame_number, gtpprime_proto, show_heartbeat)
+            if debug:
+                print("GTP'")
+                print(gtpprime_request)
+            msg_description = gtpprime_request
         if packet_has_pfcp:
             pfcp_request      = parse_pfcp_proto(frame_number, pfcp_proto, show_heartbeat, ignore_pfcp_duplicate_packets, last_pfcp_message)
             last_pfcp_message = pfcp_request
@@ -1036,11 +1078,11 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     # Added GTPv2 for N26 messages and TCP to filter out spurious TCP retransmissions
     tshark_command.extend([ 
        '-Y',
-       '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp or gtpv2',
+       '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp or gtpv2 or diameter or radius or gtpprime',
        '-T',
        'pdml',
        '-J',
-       'http2 ngap pfcp gtpv2 tcp',
+       'http2 ngap pfcp gtpv2 tcp diameter radius gtpprime',
        '-n'
        ])
 
