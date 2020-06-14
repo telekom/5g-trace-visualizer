@@ -591,7 +591,14 @@ def order_participants(participants, packet_descriptions_str, force_order_str):
     print('Final participant order: {0}'.format(participants_ordered))
     return participants_ordered
 
-def output_puml(output_file, packet_descriptions, print_legend, participants=None, simple_diagrams=False, force_show_frames='', force_order='', show_timestamp=False):
+def output_puml(output_file, 
+                packet_descriptions, 
+                print_legend, 
+                participants=None, 
+                simple_diagrams=False, 
+                force_show_frames='', 
+                force_order='', 
+                show_timestamp=False):
     # Generate full packet descriptions first, as we first want to check participants
     packet_descriptions_str = [ packet_to_str(packet, simple_diagrams, force_show_frames, show_timestamp) for packet in packet_descriptions ];
 
@@ -660,7 +667,10 @@ def generate_new_participants(participants, new_packet_descriptions):
 
     return new_participants
 
-def packet_sub(packet, mapping, idx):
+def packet_sub(packet, 
+               mapping, 
+               idx,
+               show_selfmessages=False):
     src = packet.ip_src
     dst = packet.ip_dst
     old_src = src
@@ -673,9 +683,11 @@ def packet_sub(packet, mapping, idx):
     if dst in mapping:
         dst = mapping[dst][idx]
         sub_done = True
+    
     # Clean up self-messages for clarity
-    if src == dst:
+    if (src == dst) and not show_selfmessages:
         return None
+
     # Return packet with substituted src and dst (e.g. pod name)
     if not sub_done:
         new_packet = PacketDescription(src, dst, packet.frame_number, packet.protocols_str, packet.msg_description, packet.timestamp, packet.timestamp_offsett)
@@ -696,29 +708,42 @@ def add_participants_if_not_there(new_participants, participants_to_extend):
     participants_to_add  = [ participant for participant in new_participants if participant[1] not in current_participants ]
     participants_to_extend.extend(participants_to_add)
 
-def substitute_pod_ips_with_name(participants, packet_descriptions, ip_to_pod_mapping, participants_to_append=None):
-    return substitute_ips_with_mapping(participants, packet_descriptions, ip_to_pod_mapping, 0, participants_to_append)
+def substitute_pod_ips_with_name(participants, packet_descriptions, ip_to_pod_mapping, participants_to_append=None, show_selfmessages=False):
+    return substitute_ips_with_mapping(participants, packet_descriptions, ip_to_pod_mapping, 0, participants_to_append, show_selfmessages)
 
-def substitute_pod_ips_with_namespace(participants, packet_descriptions, ip_to_pod_mapping, participants_to_append=None):
-    return substitute_ips_with_mapping(participants, packet_descriptions, ip_to_pod_mapping, 1, participants_to_append)
+def substitute_pod_ips_with_namespace(participants, packet_descriptions, ip_to_pod_mapping, participants_to_append=None, show_selfmessages=False):
+    return substitute_ips_with_mapping(participants, packet_descriptions, ip_to_pod_mapping, 1, participants_to_append, show_selfmessages)
 
-def substitute_ips_with_mapping(participants, packet_descriptions, ip_to_pod_mapping, mapping_idx, participants_to_append=None):
-    new_packet_descriptions = [ packet_f for packet_f in [ packet_sub(packet, ip_to_pod_mapping, mapping_idx) for packet in packet_descriptions ] if packet_f is not None ]
+def substitute_ips_with_mapping(participants, packet_descriptions, ip_to_pod_mapping, mapping_idx, participants_to_append=None, show_selfmessages=False):
+    new_packet_descriptions = [ packet_f for packet_f in [ packet_sub(packet, ip_to_pod_mapping, mapping_idx, show_selfmessages) for packet in packet_descriptions ] if packet_f is not None ]
     new_participants = generate_new_participants(participants, new_packet_descriptions)
     if participants_to_append is not None:
         add_participants_if_not_there(new_participants, participants_to_append)
     return new_participants, new_packet_descriptions
 
-def map_vm_ips(output_to_generate, ip_to_vm_mapping):
+def map_vm_ips(output_to_generate, ip_to_vm_mapping, show_selfmessages=False):
     suffix              = output_to_generate[0]
     packet_descriptions = output_to_generate[1]
     participants        = output_to_generate[2]
     print_legend        = output_to_generate[3]
 
-    new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0)
+    new_participants, new_packet_descriptions = substitute_ips_with_mapping(participants, packet_descriptions, ip_to_vm_mapping, 0, show_selfmessages=show_selfmessages)
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
-def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, vm_mapping=None, ignorehttpheaders=None, diagrams_to_output='', simple_diagrams=False, force_show_frames='', force_order='', ignore_spurious_tcp_retransmissions=True, ignore_pfcp_duplicate_packets=True, show_timestamp=False):
+def import_pdml(file_paths, 
+                pod_mapping=None, 
+                limit=100, 
+                show_heartbeat=False, 
+                vm_mapping=None, 
+                ignorehttpheaders=None, 
+                diagrams_to_output='', 
+                simple_diagrams=False, 
+                force_show_frames='', 
+                force_order='', 
+                ignore_spurious_tcp_retransmissions=True, 
+                ignore_pfcp_duplicate_packets=True, 
+                show_timestamp=False,
+                show_selfmessages=False):
     print('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -959,14 +984,14 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
         pod_mapping_list = pod_mapping.split(',')
         ip_to_pod_mapping = yaml_parser.load_yaml_list(pod_mapping_list)
         if ip_to_pod_mapping is not None:
-            participants_per_pod, packet_descriptions_per_pod             = substitute_pod_ips_with_name(participants, packet_descriptions, ip_to_pod_mapping)
-            participants_per_namespace, packet_descriptions_per_namespace = substitute_pod_ips_with_namespace(participants, packet_descriptions, ip_to_pod_mapping)
+            participants_per_pod, packet_descriptions_per_pod             = substitute_pod_ips_with_name(participants, packet_descriptions, ip_to_pod_mapping, show_selfmessages=show_selfmessages)
+            participants_per_namespace, packet_descriptions_per_namespace = substitute_pod_ips_with_namespace(participants, packet_descriptions, ip_to_pod_mapping, show_selfmessages=show_selfmessages)
         outputs_to_generate['k8s_pod']       = ('_pod', packet_descriptions_per_pod, participants_per_pod, False)
         outputs_to_generate['k8s_namespace'] = ('_namespace', packet_descriptions_per_namespace, participants_per_namespace, False)
 
     if vm_mapping is not None:
         ip_to_vm_mapping = yaml_parser.load_yaml_vm(vm_mapping)
-        outputs_to_generate = { k : map_vm_ips(output_to_generate, ip_to_vm_mapping) for k,output_to_generate in outputs_to_generate.items() }
+        outputs_to_generate = { k : map_vm_ips(output_to_generate, ip_to_vm_mapping, show_selfmessages=show_selfmessages) for k,output_to_generate in outputs_to_generate.items() }
 
     # Generate PlantUML diagram
     dirname,file_name = os.path.split(file_path)
@@ -991,13 +1016,27 @@ def import_pdml(file_paths, pod_mapping=None, limit=100, show_heartbeat=False, v
         # All packets fit into one file
         elif len(packet_descriptions_slices) == 1:
             output_file = os.path.join(dirname, '{0}{1}.puml'.format(file, suffix))
-            output_puml(output_file, packet_descriptions_slices[0], print_legend, participants, simple_diagrams, force_show_frames, force_order, show_timestamp)
+            output_puml(output_file, 
+                        packet_descriptions_slices[0], 
+                        print_legend, 
+                        participants, 
+                        simple_diagrams, 
+                        force_show_frames, 
+                        force_order, 
+                        show_timestamp)
             output_files.append(output_file)
         # Several files (many messages)
         else:
             for counter,packet_descriptions_slice in enumerate(packet_descriptions_slices):
                 output_file = os.path.join(dirname, '{0}{1}_{2:03d}.puml'.format(file, suffix, counter))
-                output_puml(output_file, packet_descriptions_slice, print_legend, participants, simple_diagrams, force_show_frames, force_order, show_timestamp)
+                output_puml(output_file, 
+                            packet_descriptions_slice, 
+                            print_legend, 
+                            participants, 
+                            simple_diagrams, 
+                            force_show_frames, 
+                            force_order, 
+                            show_timestamp)
                 output_files.append(output_file)
 
     return output_files
@@ -1146,9 +1185,10 @@ if __name__ == '__main__':
     parser.add_argument('-diagrams', type=str, required=False, default='ip,k8s_pod,k8s_namespace', help='Comma-separated list of diagram types you want to output. Options: "ip": original IP-based packet trace, "k8s_pod": groups messages based on pod IP addresses, "k8s_namespace": groups messages based on namespace IP addresses. Defaults to "ip,k8s_pod,k8s_namespace"')
     parser.add_argument('-simple_diagrams', type=str2bool, required=False, default=False, help="Whether to output simpler diagrams without a payload body. Defaults to 'False")
     parser.add_argument('-force_show_frames', type=str, required=False, default='', help="Comma-separated list of frame numbers that even if using the simple_diagrams option you would want to be fully shown")
-    parser.add_argument('-force_order', type=str, required=False, default='', help="Comma-separated list of labels you want placed first in the diagram's participant list if found in the trace")
+    parser.add_argument('-force_order', type=str, required=False, default='', help="Comma-separated list of participant labels you want placed first in the diagram's participant list (if found in the trace, no effect if the participant is not found)")
     parser.add_argument('-ignore_pfcp_duplicate_packets', type=str2bool, required=False, default=True, help='Whether to ignore PFCP retransmissions for better readability. Default is "True"')
     parser.add_argument('-show_timestamp', type=str2bool, required=False, default=False, help='Whether you want to show the message timestamps in the diagram. Default is "False"')
+    parser.add_argument('-show_selfmessages', type=str2bool, required=False, default=False, help='Whether you want to show self-messages. You may want to turn this to "True" if you are running a trace on localhost. Default is "False"')
 
     args = parser.parse_args()
     
@@ -1174,6 +1214,7 @@ if __name__ == '__main__':
     print('Show HTTP/2 in spurious TCP retransmission messages: {0}'.format(args.ignore_spurious_tcp_retransmissions))
     print('Ignore PFCP packet duplicates: {0}'.format(args.ignore_pfcp_duplicate_packets))
     print('Show timestamp in diagram: {0}'.format(args.show_timestamp))
+    print('Show self-messages: {0}'.format(args.show_selfmessages))
     print()
     
     http2_string_unescape = args.unescapehttp
@@ -1189,8 +1230,22 @@ if __name__ == '__main__':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
 
-    output_puml_files = import_pdml(input_file, args.pods, args.limit, args.showheartbeat, args.openstackservers, args.ignorehttpheaders, args.diagrams, args.simple_diagrams, args.force_show_frames, args.force_order, args.ignore_spurious_tcp_retransmissions, args.ignore_pfcp_duplicate_packets, args.show_timestamp)
+    puml_files = import_pdml(
+        input_file, 
+        args.pods, 
+        args.limit, 
+        args.showheartbeat,
+        args.openstackservers, 
+        args.ignorehttpheaders, 
+        args.diagrams, 
+        args.simple_diagrams,
+        args.force_show_frames, 
+        args.force_order, 
+        args.ignore_spurious_tcp_retransmissions, 
+        args.ignore_pfcp_duplicate_packets, 
+        args.show_timestamp,
+        args.show_selfmessages)
 
     if args.svg:
         print('Converting .puml files to SVG')
-        output_files_as_svg(output_puml_files)
+        output_files_as_svg(puml_files)

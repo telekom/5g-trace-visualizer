@@ -1,0 +1,9 @@
+servers:
+  'SMF':
+    interfaces:
+      n4:
+        fixed:     "10.200.200.1"
+  'UPF':
+    interfaces:
+      n4:
+        fixed:     "10.200.200.101"
