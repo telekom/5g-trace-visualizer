@@ -15,6 +15,7 @@
     * [Adding additional host labels](#adding-additional-host-labels)
 	* [Adding timestamps](#adding-timestamps)
     * [Showing only certain packets](#showing-only-certain-packets)
+    * [Sharing an edited trace](#sharing-an-edited-trace)
 
 # Summary
 
@@ -187,7 +188,7 @@ The following example [servers.yaml](doc/examples/servers.yaml) file is used to 
 
 Run ``python trace_visualizer.py -wireshark 3.2.2 -http2ports "29502,29503,29504,29507,29509,29518" -limit 200 -openstackservers "<path_to_servers.yaml>\servers.yaml" -show_selfmessages True "<path_to_trace>\free5gc.pcap"``
 
-Note: self-messages are typically omitted from the generated diagram. since in this case part of the 5GC is running on localhost, the ``-show_selfmessages True`` option is used to show self-messages. 
+Note: self-messages are typically omitted from the generated diagram. since in this case part of the 5GC is running on localhost, the ``-show_selfmessages True`` option is used to show self-messages.
 
 ![free5GC plain](doc/examples/free5gc_3.2.2_labels.PNG)
 SVG full diagram [here](doc/examples/free5gc_3.2.2_labels.svg)
@@ -211,6 +212,27 @@ Just use the ``show_timestamp True`` option, e.g. ``python trace_visualizer.py -
 
 ![free5GC plain](doc/examples/free5gc_3.2.2_simple.PNG)
 SVG full diagram [here](doc/examples/free5gc_3.2.2_simple.svg)
+
+### Sharing an edited traces
+
+Maybe you have a vendor trace but cannot share a diagram because it contains proprietary information? Or have a real trace but you also cannot share it because it contains personal information? (e.g. real IMSIs).
+
+There are some workaround you can use to get around this.
+
+Let us assume that we want to show the information below but the actual IMSIs (``imsi-2089300007487``) in frames 36, 38 cannot be shown.
+![free5GC plain](doc/examples/free5gc_3.2.2_imsi.PNG)
+
+Since this application works on an exported PDML file, you can just edit the generated PDML file and remove/edit from there any information you want. As long as the XML is valid, the output will still be generated.
+
+Just search for ``<field name="num" pos="0" show="36"`` in the PDML file to go to frame 36 and edit it accordingly.
+
+Note that you odo not have to edit the parsed HTTP/2 fields but rather the ``http2.data.data`` hex payload. It is cumbersome, but since this application does HTTP/2 frame reconstruction (a data payload can span more than one HTTP/2 frame), it works with the binary payload. Just use a HEX-to-ASCII converter (e.g. [here](https://www.rapidtables.com/convert/number/hex-to-ascii.html)), edit the payload and convert it back to HEX (e.g. [here](https://www.rapidtables.com/convert/number/ascii-to-hex.html)). In this case, we will change the payloads to change ``imsi-2089300007487`` to ``imsi-XXXXXXXXXXXXX (removed)``.
+
+The same for frame 38. The output can be seen below
+![free5GC plain](doc/examples/free5gc_3.2.2_imsi_edited.PNG)
+SVG full diagram [here](doc/examples/free5gc_3.2.2_imsi_edited.svg)
+
+Maybe some editing features will be added in the feature, but will depend on whether that is really needed or not.
 
 ## Notes
 

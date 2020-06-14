@@ -1229,6 +1229,8 @@ if __name__ == '__main__':
         if file_extension != '.pdml':
             print('\nERROR: Can only process .pdml files. Set the -wireshark <wireshark option> option if you want to process .pcap/.pcapng files. e.g. -wireshark "2.9.0"')
             sys.exit(2)
+        # There is not support for multiple Wireshark versions if a PDML file is used as input
+        input_file = [input_file]
 
     puml_files = import_pdml(
         input_file, 
