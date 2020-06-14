@@ -226,7 +226,7 @@ Since this application works on an exported PDML file, you can just edit the gen
 
 Just search for ``<field name="num" pos="0" show="36"`` in the PDML file to go to frame 36 and edit it accordingly.
 
-Note that you odo not have to edit the parsed HTTP/2 fields but rather the ``http2.data.data`` hex payload. It is cumbersome, but since this application does HTTP/2 frame reconstruction (a data payload can span more than one HTTP/2 frame), it works with the binary payload. Just use a HEX-to-ASCII converter (e.g. [here](https://www.rapidtables.com/convert/number/hex-to-ascii.html)), edit the payload and convert it back to HEX (e.g. [here](https://www.rapidtables.com/convert/number/ascii-to-hex.html)). In this case, we will change the payloads to change ``imsi-2089300007487`` to ``imsi-XXXXXXXXXXXXX (removed)``.
+Note that you odo not have to edit the parsed HTTP/2 fields but rather the ``http2.data.data`` hex payload. It is cumbersome, but since this application does HTTP/2 frame reconstruction (a data payload can span more than one HTTP/2 frame), it works with the binary payload. Just use a HEX-to-ASCII converter (e.g. [here](https://www.rapidtables.com/convert/number/hex-to-ascii.html)), edit the payload and convert it back to HEX (e.g. [here](https://www.rapidtables.com/convert/number/ascii-to-hex.html)). In this case, we will change the payloads to change ``imsi-2089300007487`` to ``imsi-XXXXXXXXXXXXX (removed)``. You can find the edited trace [here](doc/free5gc_3.2.2_edited.pdml).
 
 The same for frame 38. The output can be seen below
 ![free5GC plain](doc/examples/free5gc_3.2.2_imsi_edited.PNG)
