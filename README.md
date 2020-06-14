@@ -213,7 +213,7 @@ Just use the ``show_timestamp True`` option, e.g. ``python trace_visualizer.py -
 ![free5GC plain](doc/examples/free5gc_3.2.2_simple.PNG)
 SVG full diagram [here](doc/examples/free5gc_3.2.2_simple.svg)
 
-### Sharing an edited traces
+### Sharing an edited trace
 
 Maybe you have a vendor trace but cannot share a diagram because it contains proprietary information? Or have a real trace but you also cannot share it because it contains personal information? (e.g. real IMSIs).
 
