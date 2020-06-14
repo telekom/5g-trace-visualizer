@@ -13,6 +13,8 @@
     * [Using several Wireshark versions for decoding](#using-several-wireshark-versions-for-decoding)
     * [Omitting HTTP/2 headers](#omitting-http2-headers)
     * [Adding additional host labels](#adding-additional-host-labels)
+	* [Adding timestamps](#adding-timestamps)
+    * [Showing only certain packets](#showing-only-certain-packets)
 
 # Summary
 
@@ -183,7 +185,32 @@ servers:
 
 The following example [servers.yaml](doc/examples/servers.yaml) file is used to generate the diagram below:
 
+Run ``python trace_visualizer.py -wireshark 3.2.2 -http2ports "29502,29503,29504,29507,29509,29518" -limit 200 -openstackservers "<path_to_servers.yaml>\servers.yaml" -show_selfmessages True "<path_to_trace>\free5gc.pcap"``
 
+Note: self-messages are typically omitted from the generated diagram. since in this case part of the 5GC is running on localhost, the ``-show_selfmessages True`` option is used to show self-messages. 
+
+![free5GC plain](doc/examples/free5gc_3.2.2_labels.PNG)
+SVG full diagram [here](doc/examples/free5gc_3.2.2_labels.svg)
+
+### Adding timestamps
+
+There is an option to add relative timestamps to the generated diagrams (e.g. to measure processing time).
+
+Just use the ``show_timestamp True`` option, e.g. ``python trace_visualizer.py -wireshark 3.2.2 -http2ports "29502,29503,29504,29507,29509,29518" -limit 200 -openstackservers "<path_to_servers.yaml>\servers.yaml" -show_selfmessages True -show_timestamp True "<path_to_trace>\free5gc.pcap"``
+
+![free5GC plain](doc/examples/free5gc_3.2.2_timestamp.PNG)
+SVG full diagram [here](doc/examples/free5gc_3.2.2_timestamp.svg)
+
+### Showing only certain packets
+
+Do you want to put some pictures in a Wiki or send a diagram to a colleague but there is too much information? There is the option to omit most of the information and also to explicitly show some: ``-simple_diagrams`` and ``-force_show_frames``
+
+As an example, we will generate a diagram showing only a couple of NAS messages for PDU session establishment: frames 15 (registration request), 175 (registration complete) and 228 (PDU session establishment accept).
+
+Just use the ``show_timestamp True`` option, e.g. ``python trace_visualizer.py -wireshark 3.2.2 -http2ports "29502,29503,29504,29507,29509,29518" -limit 200 -openstackservers "<path_to_servers.yaml>\servers.yaml" -show_selfmessages True -show_timestamp True -simple_diagrams True -force_show_frames "15,175,228" "<path_to_trace>\free5gc.pcap"``
+
+![free5GC plain](doc/examples/free5gc_3.2.2_simple.PNG)
+SVG full diagram [here](doc/examples/free5gc_3.2.2_simple.svg)
 
 ## Notes
 
