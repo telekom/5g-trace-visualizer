@@ -161,7 +161,7 @@ It may happen that your system uses a mix of VMs and containers. Or that the map
 
 The syntax of the YAML file is chosen so that it is easy to export the data from OpenStack and directly use it as input without further processing.
 
-Any IP found in the ``fixed`` field will be mapped to the server label. E.g. messages originating from ``192.168.10.2`` and ``192.168.6.19`` IPs will both be shown as originating from the same element, which will be labeled ``System running on VM with several IPs``.
+Any IP found in the ``fixed`` field will be mapped to the server label. E.g. messages originating from ``192.168.10.2`` and ``192.168.6.19`` IPs will both be shown as originating from the same element, which will be labeled ``Test system running on VM with several IPs``.
 
 Only the labels shown are parsed. Your YAML file may contain additional labels (most probably the case if it is an exported file).
 
