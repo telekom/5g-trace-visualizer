@@ -6,6 +6,7 @@
   * [Application structure](#application-structure)
   * [Examples](#examples)
     * [Help](#help)
+    * [5GC Trace](#5gc-trace) 
     * [HTTP/2 trace](#http2-trace)
     * [Adding pod data](#adding-pod-data)
     * [Merging capture files](#merging-capture-files)
