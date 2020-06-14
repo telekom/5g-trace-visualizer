@@ -63,7 +63,7 @@ Please be sure to visit their project website [free5GC](https://www.free5gc.org/
 
 They provided us with [the following trace](doc/free5gc.pcap), which we will use to illustrate the examples.
 
-![free5GC trace](doc/free5gc_wireshark.png)
+![free5GC trace](doc/free5gc_wireshark.PNG)
 
 ### HTTP/2 trace
 
