@@ -6,7 +6,7 @@
   * [Application structure](#application-structure)
   * [Examples](#examples)
     * [Help](#help)
-    * [5GC Trace](#5gc-trace) 
+    * [5GC Trace](#5gc-trace)
     * [HTTP/2 trace](#http2-trace)
     * [Adding pod data](#adding-pod-data)
     * [Merging capture files](#merging-capture-files)
@@ -232,6 +232,13 @@ Note that you odo not have to edit the parsed HTTP/2 fields but rather the ``htt
 The same for frame 38. The output can be seen below
 ![free5GC plain](doc/examples/free5gc_3.2.2_imsi_edited.PNG)
 SVG full diagram [here](doc/examples/free5gc_3.2.2_imsi_edited.svg)
+
+Editing headers is simpler. To modify the header shown below,
+![free5GC plain](doc/examples/free5gc_3.2.2_imsi_header.PNG)
+you just need to go to frame 31 and to the ``<field name="http2.header" showname="Header: :path: ``. The application uses the ``show`` value of each header to generate the diagrams (in this case ``<field name="http2.header.value"``). In this case we changed the value to ``show="/nudr-dr/v1/subscription-data/imsi-XXXXXXXXXXXXX/authentication-data/authentication-subscription"``.
+
+The result can be seen below:
+![free5GC plain](doc/examples/free5gc_3.2.2_imsi_header_edited.PNG)
 
 Maybe some editing features will be added in the feature, but will depend on whether that is really needed or not.
 
