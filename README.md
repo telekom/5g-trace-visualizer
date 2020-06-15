@@ -126,6 +126,7 @@ Let us try running ``python trace_visualizer.py -wireshark 3.2.2 "<path_to_trace
 
 We obtain the following trace diagram:
 ![free5GC plain](doc/examples/free5gc_3.2.2_plain.PNG)
+
 SVG full diagram [here](doc/examples/free5gc_3.2.2_plain.svg)
 
 There seems to be some things missing. That is because the SBI communication will run on varying ports depending on the configuration/deployment. While some ports are used by default, those may not be the ones your deployment are using.
@@ -137,6 +138,7 @@ Note: the ``limit`` option overrides the default of maximum 100 messages per out
 
 The output looks more like a 5GC trace now:
 ![free5GC plain](doc/examples/free5gc_3.2.2_ports.PNG)
+
 SVG full diagram [here](doc/examples/free5gc_3.2.2_ports.svg)
 
 ### Using several Wireshark versions for decoding
@@ -192,6 +194,7 @@ Run ``python trace_visualizer.py -wireshark 3.2.2 -http2ports "29502,29503,29504
 Note: self-messages are typically omitted from the generated diagram. since in this case part of the 5GC is running on localhost, the ``-show_selfmessages True`` option is used to show self-messages.
 
 ![free5GC plain](doc/examples/free5gc_3.2.2_labels.PNG)
+
 SVG full diagram [here](doc/examples/free5gc_3.2.2_labels.svg)
 
 ### Adding timestamps
@@ -201,6 +204,7 @@ There is an option to add relative timestamps to the generated diagrams (e.g. to
 Just use the ``show_timestamp True`` option, e.g. ``python trace_visualizer.py -wireshark 3.2.2 -http2ports "29502,29503,29504,29507,29509,29518" -limit 200 -openstackservers "<path_to_servers.yaml>\servers.yaml" -show_selfmessages True -show_timestamp True "<path_to_trace>\free5gc.pcap"``
 
 ![free5GC plain](doc/examples/free5gc_3.2.2_timestamp.PNG)
+
 SVG full diagram [here](doc/examples/free5gc_3.2.2_timestamp.svg)
 
 ### Showing only certain packets
@@ -212,6 +216,7 @@ As an example, we will generate a diagram showing only a couple of NAS messages 
 Just use the ``show_timestamp True`` option, e.g. ``python trace_visualizer.py -wireshark 3.2.2 -http2ports "29502,29503,29504,29507,29509,29518" -limit 200 -openstackservers "<path_to_servers.yaml>\servers.yaml" -show_selfmessages True -show_timestamp True -simple_diagrams True -force_show_frames "15,175,228" "<path_to_trace>\free5gc.pcap"``
 
 ![free5GC plain](doc/examples/free5gc_3.2.2_simple.PNG)
+
 SVG full diagram [here](doc/examples/free5gc_3.2.2_simple.svg)
 
 ### Sharing an edited trace
@@ -231,11 +236,13 @@ Note that you odo not have to edit the parsed HTTP/2 fields but rather the ``htt
 
 The same for frame 38. The output can be seen below
 ![free5GC plain](doc/examples/free5gc_3.2.2_imsi_edited.PNG)
+
 SVG full diagram [here](doc/examples/free5gc_3.2.2_imsi_edited.svg)
 
 Editing headers is simpler. To modify the header shown below,
 ![free5GC plain](doc/examples/free5gc_3.2.2_imsi_header.PNG)
-you just need to go to frame 31 and to the ``<field name="http2.header" showname="Header: :path: ``. The application uses the ``show`` value of each header to generate the diagrams (in this case ``<field name="http2.header.value"``). In this case we changed the value to ``show="/nudr-dr/v1/subscription-data/imsi-XXXXXXXXXXXXX/authentication-data/authentication-subscription"``.
+
+You just need to go to frame 31 and to the ``<field name="http2.header" showname="Header: :path: ``. The application uses the ``show`` value of each header to generate the diagrams (in this case ``<field name="http2.header.value"``). In this case we changed the value to ``show="/nudr-dr/v1/subscription-data/imsi-XXXXXXXXXXXXX/authentication-data/authentication-subscription"``.
 
 The result can be seen below:
 ![free5GC plain](doc/examples/free5gc_3.2.2_imsi_header_edited.PNG)
