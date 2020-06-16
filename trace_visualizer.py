@@ -840,7 +840,10 @@ def import_pdml(file_paths,
         # For 5GC
         ngap_proto  = packet.find("proto[@name='ngap']")
         http2_proto = packet.find("proto[@name='http2']")
-        pfcp_proto  = packet.find("proto[@name='pfcp']")
+
+        # We found one trace where the PFCP protocol was signaled as ICMP, which messed with the trace
+        pfcp_proto  = packet.find(".//proto[@name='pfcp']")
+
         gtpv2_proto = packet.find("proto[@name='gtpv2']")
 
         # For EPC
@@ -1115,13 +1118,14 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     # Added disabling name resolution (see #2). Reference: https://tshark.dev/packetcraft/add_context/name_resolution/
     # Added GTPv2 for N26 messages and TCP to filter out spurious TCP retransmissions
+    # Added ICMP because it was observed that sometimes PFCP messages are put into the icmp <proto> tag
     tshark_command.extend([ 
        '-Y',
-       '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp or gtpv2 or diameter or radius or gtpprime',
+       '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp or gtpv2 or diameter or radius or gtpprime or icmp',
        '-T',
        'pdml',
        '-J',
-       'http2 ngap pfcp gtpv2 tcp diameter radius gtpprime',
+       'http2 ngap pfcp gtpv2 tcp diameter radius gtpprime icmp',
        '-n'
        ])
 
