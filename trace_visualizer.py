@@ -355,7 +355,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
             try:
                 data_ascii = http_data_as_hex.decode('ascii')
             except:
-                data_ascii = http_data_as_hex.decode('utf_8')
+                data_ascii = http_data_as_hex.decode('utf_8', errors="ignore")
             if data_ascii != '':
                 # Cleanup non-printable characters
                 cleaned_data_ascii = ascii_non_printable.sub(' ', data_ascii)
@@ -374,6 +374,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
         except:
             # If data is marked as missing, then there is no data
             print('Frame {0}: could not get HTTP/2 payload. Probably missing'.format(frame_number))
+            traceback.print_exc()
             pass
 
     if fragmented_packet and (reassembly_frame != frame_number):
