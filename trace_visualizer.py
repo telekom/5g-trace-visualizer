@@ -980,7 +980,7 @@ def import_pdml(file_paths,
 
     # Three types of output: ip (plain), k8s_pod, k8s_namespace
     outputs_to_generate = {}
-    outputs_to_generate['ip'] = ('', packet_descriptions, participants, True)
+    outputs_to_generate['ip'] = ('', packet_descriptions, participants, False) # Remove ugly legend
 
     # Pod information if  available
     if pod_mapping is not None:
