@@ -170,8 +170,11 @@ def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_dup
 
     return nas_5g_json_str          
 
-def parse_nas_proto(frame_number, el):
-    ngap_pdu = el.find("field[@name='ngap.NGAP_PDU']")
+def parse_nas_proto(frame_number, el, multipart_proto=False):
+    if not multipart_proto:
+        ngap_pdu = el.find("field[@name='ngap.NGAP_PDU']")
+    else:
+        ngap_pdu = el
     if ngap_pdu is None:
         return ''
     nas_5g_protos = find_nas_proto(ngap_pdu)
@@ -244,8 +247,9 @@ def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_t
     except:
         pass
 
+    boundary_dict = {} # Currently not supported over several frames. Will add if needed
     streams = el.findall("field[@name='http2.stream']")
-    parsed_streams = [parse_http_proto_stream(frame_number, stream, ignorehttpheaders_list) for stream in streams]
+    parsed_streams = [parse_http_proto_stream(frame_number, stream, ignorehttpheaders_list, el, boundary_dict) for stream in streams]
     parsed_streams = [e for e in parsed_streams if e is not None]
     parsed_streams = [format_http2_line_breaks(e) for e in parsed_streams]
 
@@ -285,7 +289,7 @@ def format_http2_line_breaks(e):
         return e + '\n'
     return e
 
-def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
+def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, http2_proto_el, boundary_dict):
     stream_id_el = stream_el.find("field[@name='http2.streamid']")
     if stream_id_el is None:
         return None
@@ -312,9 +316,21 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
     fragmented_packet = reassembly_frame is not None
 
     header_list = []
+    multipart_content_type_headers = []
     if len(headers)>0:
         header_list.append(('HTTP/2 stream', '{0}'.format(stream_id)))
         header_list.extend([(header.find("field[@name='http2.header.name']").attrib["show"], header.find("field[@name='http2.header.value']").attrib["show"]) for header in headers])
+        multipart_content_type_headers = [ header for header in header_list if header[0]=='content-type' and 'multipart/related' in header[1] ]
+
+    boundary = None
+    if len(multipart_content_type_headers) > 0:
+        try:
+            split_headers = [ header[1].split(';') for header in multipart_content_type_headers ]
+            boundaries    = [ header[-1].split('=')[-1] for header in split_headers ]
+            boundary      = boundaries[-1] # Only one boundary per header supported
+            boundary_dict[stream_id] = boundary
+        except:
+            pass
 
     # Return None if there are not headers and the data is reassembled later on (just a data fragment)
     # Save fragment for later reassembly
@@ -329,6 +345,11 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
 
     data_ascii = ''
     json_data  = False
+    if stream_id in boundary_dict:
+        boundary = boundary_dict[stream_id]
+    else:
+        boundary = None
+
     if (data is not None) and ((reassembly_frame == frame_number) or (former_fragments is not None)):
         try:
             prior_data = ''
@@ -350,27 +371,63 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
             
             data_hex = prior_data + current_data
 
+            def hex_string_to_ascii(http_data_as_hexstring, remove_content_type=False):
+                http_data_as_hex = bytearray.fromhex(http_data_as_hexstring)
+                ascii_str = ''
+                try:
+                    ascii_str = http_data_as_hex.decode('ascii')
+                except:
+                    ascii_str = http_data_as_hex.decode('utf_8', errors="ignore")
+
+                if ascii_str != '':
+                    # Cleanup non-printable characters
+                    cleaned_ascii_str = ascii_non_printable.sub(' ', ascii_str)
+                    ascii_str = cleaned_ascii_str
+                    if remove_content_type:
+                        ascii_str = ascii_str.strip().rstrip()
+                        to_remove = 'Content-Type: application/json'
+                        if ascii_str.startswith(to_remove):
+                            ascii_str = ascii_str[len(to_remove):]
+                try:
+                    # If JSON, format nicely
+                    parsed_json = json.loads(ascii_str)
+
+                    #Limit JSON parameter length for nicer output
+                    parsed_json = filter_long_json_params(parsed_json, max_ascii_length_for_json_param)
+
+                    ascii_str  = json.dumps(parsed_json, indent=2, sort_keys=False)
+                    json_data  = True
+                except:
+                    print('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
+                return ascii_str
+
             # Try first ascii decoding, then if it fails, the default one (UTF-8)
-            http_data_as_hex = bytearray.fromhex(data_hex)
-            try:
-                data_ascii = http_data_as_hex.decode('ascii')
-            except:
-                data_ascii = http_data_as_hex.decode('utf_8', errors="ignore")
-            if data_ascii != '':
-                # Cleanup non-printable characters
-                cleaned_data_ascii = ascii_non_printable.sub(' ', data_ascii)
-                data_ascii = cleaned_data_ascii
-            try:
-                # If JSON, format nicely
-                parsed_json = json.loads(data_ascii)
+            if boundary is None:
+                data_ascii = hex_string_to_ascii(data_hex)
+            else:
+                json_data = True
+                boundary_hex = ('--'+boundary).encode("ascii").hex()
+                print('Frame {0}: Processing multipart message. Boundary={1}({2})'.format(frame_number,'--'+boundary,boundary_hex))
 
-                #Limit JSON parameter length for nicer output
-                parsed_json = filter_long_json_params(parsed_json, max_ascii_length_for_json_param)
-
-                data_ascii  = json.dumps(parsed_json, indent=2, sort_keys=False)
-                json_data   = True
-            except:
-                print('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
+                # Get the other parsed protocols
+                mime_parts = http2_proto_el.findall("proto[@name='mime_multipart']/field[@name='mime_multipart.part']")
+                print('Frame {0}: Found {1} MIME parts'.format(frame_number, len(mime_parts)))
+                for idx,mime_part in enumerate(mime_parts):
+                    part_data  = mime_part.attrib['value']
+                    header     = mime_part.find("field[@name='mime_multipart.header.content-type']")
+                    proto_name = header.attrib['show']
+                    print('Frame {0}: Part {1}: {2}'.format(frame_number, idx+1, proto_name))
+                    print('Frame {0}: Part data: {1}'.format(frame_number, part_data))
+                    # The first multipart is per spec a JSON body
+                    if idx==0:
+                        json_msg   = hex_string_to_ascii(part_data, remove_content_type=True)
+                        data_ascii = '--First part: JSON:--\n{0}'.format(json_msg)
+                    else:        
+                        content_id = mime_part.find("field[@name='mime_multipart.header.content-id']").attrib['show']
+                        proto_name = mime_part.find("field[@name='mime_multipart.header.content-type']").attrib['show']
+                        nas_proto_element = mime_part.find("proto")
+                        proto_info = parse_nas_proto(frame_number, nas_proto_element, multipart_proto=True)
+                        data_ascii = '{0}\n\n--Next part: {1}. Content ID: {2}--\nData:{3}\n{4}'.format(data_ascii, proto_name, content_id, part_data, proto_info)
         except:
             # If data is marked as missing, then there is no data
             print('Frame {0}: could not get HTTP/2 payload. Probably missing'.format(frame_number))
@@ -382,6 +439,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list):
     elif data_ascii != '':
         data_ascii = 'HTTP/2 stream {0} payload\n'.format(stream_id) + data_ascii
 
+    # Do not print too long lines
     if (len(data_ascii) > max_ascii_length_for_http_payload) and not json_data:
         original_length = len(data_ascii)
         data_ascii = data_ascii[0:max_ascii_length_for_http_payload]
