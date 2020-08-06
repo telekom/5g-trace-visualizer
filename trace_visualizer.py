@@ -20,6 +20,7 @@ import platform
 from packaging import version
 import collections
 from datetime import datetime
+import binascii
 
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
@@ -54,6 +55,8 @@ gtpv2_message_type_regex = re.compile(r"gtpv2\.message_type: 'Message [tT]ype: (
 http_rsp_regex    = re.compile(r'status: ([\d]{3})')
 http_url_regex    = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
+
+mime_multipart_payload_regex  = re.compile(r"(--([a-zA-Z0-9 \/\.]+)[\n\r]+Content-Type: ([a-zA-Z0-9 \/\.]+)[\n\r]+Content-Id: ([a-zA-Z0-9 \/\.]+)[\n\r]+)(.*)")
 
 http2_string_unescape = True
 
@@ -401,29 +404,53 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     print('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
                 return ascii_str
 
-            # Try first ascii decoding, then if it fails, the default one (UTF-8)
-            if boundary is None:
+            # Try to auto-detect MIME multipart payloads in packets with no Ethernet frames
+            if boundary is None and len(headers) == 0:
                 data_ascii = hex_string_to_ascii(data_hex)
-            else:
+                try:
+                    m_all = [m for m in mime_multipart_payload_regex.finditer(data_ascii)]
+                    # Groups:
+                    # 0: All
+                    # 1: Full MIME multipart header
+                    # 2: Boundary
+                    # 3: MIME type
+                    # 4: Content ID
+                    # 5: Payload
+                    if len(m_all) > 0:
+                        boundary = m_all[0].group(2) 
+                        print('Found {1} MIME-multiparts by scanning payload. Boundary: "{0}"'.format(boundary, len(m_all)))
+                except:
+                    print('Exception searching for boundary')
+                    traceback.print_exc()
+                    pass
+
+            # Try first ascii decoding, then if it fails, the default one (UTF-8)
+            if boundary is not None:
                 json_data = True
                 boundary_hex = ('--'+boundary).encode("ascii").hex()
-                print('Frame {0}: Processing multipart message. Boundary={1}({2})'.format(frame_number,'--'+boundary,boundary_hex))
+                print('Frame {0}: Processing multipart message. Boundary= {1} (0x{2})'.format(frame_number,'--'+boundary,boundary_hex))
 
                 # Get the other parsed protocols
                 mime_parts = http2_proto_el.findall("proto[@name='mime_multipart']/field[@name='mime_multipart.part']")
-                print('Frame {0}: Found {1} MIME parts'.format(frame_number, len(mime_parts)))
+                print('Frame {0}: Found {1} MIME parts by applying boundary {2}'.format(frame_number, len(mime_parts), boundary))
                 for idx,mime_part in enumerate(mime_parts):
                     part_data  = mime_part.attrib['value']
                     header     = mime_part.find("field[@name='mime_multipart.header.content-type']")
                     proto_name = header.attrib['show']
                     print('Frame {0}: Part {1}: {2}'.format(frame_number, idx+1, proto_name))
                     print('Frame {0}: Part data: {1}'.format(frame_number, part_data))
-                    # The first multipart is per spec a JSON body
+                    # The first multipart is per spec a JSON body and typically does not have a Content ID
+                    try:
+                        content_id = mime_part.find("field[@name='mime_multipart.header.content-id']").attrib['show']
+                    except:
+                        content_id = None
                     if idx==0:
                         json_msg   = hex_string_to_ascii(part_data, remove_content_type=True)
-                        data_ascii = '--First part: JSON:--\n{0}'.format(json_msg)
+                        if content_id is None:
+                            data_ascii = '--First part: JSON:--\n{0}'.format(json_msg)
+                        else:
+                            data_ascii = '--First part: JSON. Content ID {1}:--\n{0}'.format(json_msg, content_id)
                     else:        
-                        content_id = mime_part.find("field[@name='mime_multipart.header.content-id']").attrib['show']
                         proto_name = mime_part.find("field[@name='mime_multipart.header.content-type']").attrib['show']
                         nas_proto_element = mime_part.find("proto")
                         proto_info = parse_nas_proto(frame_number, nas_proto_element, multipart_proto=True)
