@@ -396,7 +396,10 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     parsed_json = json.loads(ascii_str)
 
                     #Limit JSON parameter length for nicer output
-                    parsed_json = filter_long_json_params(parsed_json, max_ascii_length_for_json_param)
+                    try:
+                        parsed_json = filter_long_json_params(parsed_json, max_ascii_length_for_json_param)
+                    except:
+                        print('Frame {0}: Error filtering long JSON parameters'.format(frame_number))
 
                     ascii_str  = json.dumps(parsed_json, indent=2, sort_keys=False)
                     json_data  = True
@@ -780,12 +783,12 @@ def packet_sub(packet,
     else:
         try:
             current_description = packet.msg_description
-            if ' (original)\n' not in current_description:
-                new_description = '{0} to {1} (original)\n{2}'.format(old_src, old_dst, packet.msg_description)
+            if ' (IPs)\n' not in current_description:
+                new_description = '{0} to {1} (IPs)\n{2}'.format(old_src, old_dst, packet.msg_description)
             else:
                 new_description = packet.msg_description
         except:
-            new_description = '{0} to {1} (original)\n{2}'.format(old_src, old_dst, packet.msg_description)
+            new_description = '{0} to {1} (IPs)\n{2}'.format(old_src, old_dst, packet.msg_description)
         new_packet = PacketDescription(src, dst, packet.frame_number, packet.protocols_str, new_description, packet.timestamp, packet.timestamp_offsett)
     return new_packet
 
