@@ -40,6 +40,18 @@ We could not find a commercial tool doing exactly what we needed. While [PlantUM
 * ``plantuml.jar`` must be placed in the base directory (see [``place plantuml.jar here.txt``](place plantuml.jar here.txt)). This application was tested with the 2019.11 version (Apache Software License Version) of ``plantuml.jar``. You can find it [here](http://sourceforge.net/projects/plantuml/files/plantuml-jar-asl-1.2019.12.zip/download).
 * Wireshark portable of the desired versions placed in the ``/wireshark`` folder. See [instructions in folder](/wireshark/Readme.md).
 
+### Installation process for Linux
+0. clone the repo
+1. download and extract ``plantuml.jar`` in the base directory.
+2. ``sudo apt-get wireshark``
+3. ``sudo apt install tshark``
+4. ``sudo apt install default-jre``
+5. ``sudo apt-get -y install python3-pip``
+6. ``sudo pip3 install packaging``
+7. ``sudo pip3 install --upgrade pyyaml``
+
+example run command - ``python3 trace_visualizer.py -wireshark "OS" ./doc/free5gc.pcap``
+
 ## Application structure
 
 The figure below summarizes what this small application does ([SVG](doc/summary.svg), [PNG](doc/summary.png), [Mermaid](doc/summary.mermaid))
