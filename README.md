@@ -44,10 +44,8 @@ We could not find a commercial tool doing exactly what we needed. While [PlantUM
 0. clone the repo
 1. download and extract ``plantuml.jar`` in the base directory.
 2. ``sudo apt -y install wireshark tshark``
-3. ``sudo apt -y install default-jre``
-4. ``sudo apt -y install python3-pip``
-5. ``sudo pip3 install packaging``
-6. ``sudo pip3 install --upgrade pyyaml``
+3. ``sudo apt -y install default-jre python3-pip``
+4. ``sudo pip3 install --upgrade pyyaml packaging``
 
 example run command - ``python3 trace_visualizer.py -wireshark "OS" ./doc/free5gc.pcap``
 
