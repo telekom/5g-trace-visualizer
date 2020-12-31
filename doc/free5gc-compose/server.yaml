@@ -1,0 +1,61 @@
+servers:
+    'RAN':
+        interfaces:
+            n2:
+                fixed: "10.100.200.1"
+            n3:
+                fixed: "10.100.200.1"
+    'UE':
+        interfaces:
+            n1:
+                fixed: "60.60.0.1"
+    'DN':
+        interfaces:
+            n6:
+                fixed: "60.60.0.101"
+    'AMF':
+        interfaces:
+            n1:
+                fixed: "10.100.200.11"
+            n2:
+                fixed: "10.100.200.11"
+            namf:
+                fixed: "10.100.200.11"
+    'AUSF':
+        interfaces:
+            nausf:
+                fixed: "10.100.200.6"
+    'NRF':
+        interfaces:
+            nnrf:
+                fixed: "10.100.200.4"
+    'NSSF':
+        interfaces:
+            nnssf:
+                fixed: "10.100.200.10"
+    'PCF':
+        interfaces:
+            npcf:
+                fixed: "10.100.200.7"
+    'SMF':
+        interfaces:
+            nsmf:
+                fixed: "10.100.200.9"
+            n4:
+                fixed: "10.100.200.9"
+    'UDM':
+        interfaces:
+            nudm:
+                fixed: "10.100.200.8"
+    'UDR':
+        interfaces:
+            nudr:
+                fixed: "10.100.200.12"
+    'UPF':
+        interfaces:
+            n4:
+                fixed: "10.100.200.3"
+            n3:
+                fixed: "10.100.200.3"
+            n6:
+                fixed: "10.100.200.3"
