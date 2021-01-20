@@ -1127,6 +1127,11 @@ def import_pdml(file_paths,
         else:
             protocols_str = ','.join(protocols)
 
+        # Fix strange case that sometimes PFCP messages are shown in the GUI as ICMP destination unreachable (no idea why this happens)
+        if packet_has_pfcp and packet_has_icmp:
+            print('Fixing wrong PFCP message shown as ICMP')
+            packet_has_icmp = False
+
         if debug:
             print('Frame {0} ({4}): {1} to {2}, {3}'.format(idx, ip_src, ip_dst, protocols_str, frame_number))
         msg_description = ''
