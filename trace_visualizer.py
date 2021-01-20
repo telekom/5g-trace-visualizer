@@ -4,23 +4,24 @@
 # This file is distributed under the conditions of the Apache-v2 license. 
 # For details see the files LICENSING, LICENSE, and/or COPYING on the toplevel.
 
-import xml.etree.ElementTree as ET
-import re
+import argparse
+import collections
 import json
-import sys
-import subprocess
 import os
 import os.path
-import argparse
-import traceback
-import yaml_parser
-import urllib.parse
-import yaml
 import platform
-from packaging import version
-import collections
+import re
+import subprocess
+import sys
+import traceback
+import urllib.parse
+import xml.etree.ElementTree as ET
 from datetime import datetime
-import binascii
+
+import yaml
+from packaging import version
+
+import yaml_parser
 
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
@@ -49,6 +50,7 @@ pfcp_message_type_regex = re.compile(r"pfcp\.msg_type: 'Message [tT]ype: (.*)'")
 
 nas_req_regex = re.compile(r"nas_5gs\..*message_type: '.*[Rr]equest.*'")
 nas_message_type_regex = re.compile(r"nas_5gs\..*message_type: 'Message [tT]ype: (.*)'")
+ngap_message_type_regex = re.compile(r"ngap.procedureCode: 'procedureCode: id-(.*)'")
 
 gtpv2_req_regex = re.compile(r"gtpv2\.message_type: '.*[Rr]equest.*'")
 gtpv2_message_type_regex = re.compile(r"gtpv2\.message_type: 'Message [tT]ype: (.*)'")
@@ -241,6 +243,26 @@ def parse_ipv6_route_advertisement_proto(frame_number, protocol):
 
     return json_str
 
+
+def parse_icmp_proto(frame_number, protocol):
+    if protocol is None:
+        return ''
+
+    # Dump message content
+    icmp_type = protocol.find("field[@name='icmp.type'][@value]")
+    if icmp_type is not None:
+        icmp_type = icmp_type.attrib['value']
+        if icmp_type == '01':
+            return 'ICMP Echo Reply'
+        if icmp_type == '03':
+            return 'ICMP Destination Unreachable'
+        if icmp_type == '05':
+            return 'ICMP Redirect'
+        if icmp_type == '08':
+            return 'ICMP Echo'
+        protocol_dict = nas_5g_proto_to_dict(protocol)
+        json_str = yaml.dump(protocol_dict, indent=4, width=1000, sort_keys=False)
+        return json_str
 
 # HTTP/2 data fragments
 packet_data_fragments = {}
@@ -572,19 +594,33 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_time
     if 'NGAP' in protocol:
         if nas_req_regex.search(packet.msg_description) is not None:
             note_color = ' {0}'.format(color_nas_req)
-            protocol = protocol + ' req.'
+            protocol = 'NAS req.'
         else:
             note_color = ' {0}'.format(color_nas_rsp)
-            protocol = protocol + ' or NAS rsp.'
+            protocol = 'NGAP msg. or NAS rsp.'
 
-        matches = nas_message_type_regex.finditer(packet.msg_description)
-        message_types = [match.group(1) for match in matches if match is not None]
-        if len(message_types) > 0:
+        # Search NGAP messages
+        ngap_matches = ngap_message_type_regex.finditer(packet.msg_description)
+        ngap_message_types = [ngap_match.group(1) for ngap_match in ngap_matches if ngap_match is not None]
+        if len(ngap_message_types) > 0:
+            ngap_seen = set()
+            ngap_seen_add = ngap_seen.add
+            ngap_message_types = ['NGAP {0}'.format(x) for x in ngap_message_types if not (x in ngap_seen or ngap_seen_add(x))]
+
+        # Search NAS messages
+        nas_matches = nas_message_type_regex.finditer(packet.msg_description)
+        nas_message_types = [nas_match.group(1) for nas_match in nas_matches if nas_match is not None]
+        if len(nas_message_types) > 0:
             # Remove duplicates: https://stackoverflow.com/questions/480214/how-do-you-remove-duplicates-from-a-list-whilst-preserving-order
-            seen = set()
-            seen_add = seen.add
-            message_types = [x for x in message_types if not (x in seen or seen_add(x))]
-            protocol = '{0}\\n{1}'.format(protocol, '\\n'.join(message_types))
+            nas_seen = set()
+            nas_seen_add = nas_seen.add
+            nas_message_types = ['NAS {0}'.format(x) for x in nas_message_types if not (x in nas_seen or nas_seen_add(x))]
+
+        # Print msg. type
+        joint_ngap_nas_msg_types = ngap_message_types + nas_message_types
+        if len(joint_ngap_nas_msg_types) > 0:
+            protocol = '{0}'.format(',\\n'.join(joint_ngap_nas_msg_types))
+
     elif 'HTTP' in protocol:
         # Some customized filtering based on what we have seen
         rsp_match = http_rsp_regex.search(packet.msg_description)
@@ -769,7 +805,7 @@ def output_puml(output_file,
     participants = order_participants(participants, packet_descriptions_str_for_ordering, force_order)
 
     print('Outputting PlantUML file to {0}'.format(output_file))
-    with open(output_file, 'w') as f:
+    with open(output_file, 'w', encoding='utf-8') as f:
         f.write('@startuml\n')
         # Does not look good
         # f.write('title {0}\n'.format(file))
@@ -1039,6 +1075,9 @@ def import_pdml(file_paths,
         if route_advertisement_proto is not None and gtp_proto is None:
             route_advertisement_proto = None
 
+        # ICMP traffic
+        icmp_proto = packet.find("proto[@name='icmp']")
+
         # For EPC
         diameter_proto = packet.find("proto[@name='diameter']")
         radius_proto = packet.find("proto[@name='radius']")
@@ -1049,6 +1088,7 @@ def import_pdml(file_paths,
         packet_has_pfcp = False
         packet_has_gtpv2 = False
         packet_has_ipv6_route_advertisement = False
+        packet_has_icmp = False
 
         packet_has_diameter = False
         packet_has_radius = False
@@ -1079,6 +1119,9 @@ def import_pdml(file_paths,
         if route_advertisement_proto is not None:
             packet_has_ipv6_route_advertisement = True
             protocols.append("IPv6 route advertisement on N3")
+        if icmp_proto is not None:
+            packet_has_icmp = True
+            protocols.append("ICMP")
         if len(protocols) == 0:
             protocols_str = ''
         else:
@@ -1138,6 +1181,12 @@ def import_pdml(file_paths,
                 print('IPv6 route advertisement')
                 print(ipv6_route_advertisement)
             msg_description = ipv6_route_advertisement
+        if packet_has_icmp:
+            icmp = parse_icmp_proto(frame_number, icmp_proto)
+            if debug:
+                print('ICMP')
+                print(icmp)
+            msg_description = icmp
 
         # Calculate timestamp offsett
         if first_timestamp is not None:
