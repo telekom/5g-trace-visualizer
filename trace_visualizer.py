@@ -60,7 +60,7 @@ http_url_regex = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
 
 mime_multipart_payload_regex = re.compile(
-    r"(--([a-zA-Z0-9 \/\.]+)[\n\r]+Content-Type: ([a-zA-Z0-9 \/\.]+)[\n\r]+Content-Id: ([a-zA-Z0-9 \/\.]+)[\n\r]+)(.*)")
+    r"(--([a-zA-Z0-9 \/\.]+)[\n\r]+Content-Type: ([a-zA-Z0-9 \/\.]+)[\n\r]+(Content-Id: ([a-zA-Z0-9 \/\.]+)[\n\r]+)?)(.*)")
 
 http2_string_unescape = True
 
@@ -174,7 +174,7 @@ def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_dup
             # Last lines may have added metadata regarding the reply
             lines_to_consider = [e for e in nas_5g_json_str.split('\n') if
                                  ('pfcp.response_in:' not in e) and ('pfcp.response_to:' not in e) and (
-                                             'pfcp.response_time:' not in e)]
+                                         'pfcp.response_time:' not in e)]
             pfcp_message_to_compare_minus_last_line = '\n'.join(lines_to_consider)
             if (last_pfcp_message == pfcp_message_to_compare_minus_last_line) or (last_pfcp_message == nas_5g_json_str):
                 print('Frame {0}: ignored duplicated PFCP message (same as previous one)'.format(frame_number))
@@ -263,6 +263,7 @@ def parse_icmp_proto(frame_number, protocol):
         protocol_dict = nas_5g_proto_to_dict(protocol)
         json_str = yaml.dump(protocol_dict, indent=4, width=1000, sort_keys=False)
         return json_str
+
 
 # HTTP/2 data fragments
 packet_data_fragments = {}
@@ -369,7 +370,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
         print('Frame {0}: Stream {1}, empty DATA frame'.format(frame_number, stream_id))
         return None
 
-    # IF there is reassembly, where it is to be reassembled
+    # If there is reassembly, where it is to be reassembled
     # <field name="http2.body.reassembled.in" showname="Reassembled body in frame: 11" size="0" pos="192" show="11"/>
     reassembly_frame = stream_el.find(
         "field[@name='http2.type'][@showname='Type: DATA (0)']/../field[@name='http2.body.reassembled.in']")
@@ -387,6 +388,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                           header[0] == 'content-type' and 'multipart/related' in header[1]]
 
     boundary = None
+    boundary_scan = False
     if len(multipart_content_type_headers) > 0:
         try:
             split_headers = [header[1].split(';') for header in multipart_content_type_headers]
@@ -434,8 +436,9 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                 traceback.print_exc()
 
             data_hex = prior_data + current_data
+            multipart_lengths = []
 
-            def hex_string_to_ascii(http_data_as_hexstring, remove_content_type=False):
+            def hex_string_to_ascii(http_data_as_hexstring, remove_content_type=False, return_original_if_not_json=False):
                 http_data_as_hex = bytearray.fromhex(http_data_as_hexstring)
                 ascii_str = ''
                 try:
@@ -466,6 +469,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     json_data = True
                 except:
                     print('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
+                    if return_original_if_not_json:
+                        return http_data_as_hexstring
                 return ascii_str
 
             # Try to auto-detect MIME multipart payloads in packets with no Ethernet frames
@@ -473,34 +478,54 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                 data_ascii = hex_string_to_ascii(data_hex)
                 try:
                     m_all = [m for m in mime_multipart_payload_regex.finditer(data_ascii)]
+                    # print(data_ascii)
+
                     # Groups:
                     # 0: All
                     # 1: Full MIME multipart header
                     # 2: Boundary
                     # 3: MIME type
-                    # 4: Content ID
-                    # 5: Payload
+                    # 4: Full Content ID header
+                    # 5: Actual content ID
+                    # 6: Payload
                     if len(m_all) > 0:
                         boundary = m_all[0].group(2)
-                        print('Found {1} MIME-multiparts by scanning payload. Boundary: "{0}"'.format(boundary,
-                                                                                                      len(m_all)))
+                        # (header length, payload length)
+                        multipart_lengths = [(len(m.group(1)), len(m.group(6))) for m in m_all]
+
+                        def parse_content_id(a_str):
+                            if a_str is None:
+                                return "No Content ID"
+                            return a_str
+
+                        multipart_descriptions = ['{0} ({1})'.format(m.group(3), parse_content_id(m.group(5))) for m in m_all]
+                        print(
+                            'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
+                                boundary,
+                                len(m_all),
+                                ', '.join(multipart_descriptions),
+                                len(boundary*2)))
+                        if len(m_all) > 0:
+                            boundary_scan = True
                 except:
                     print('Exception searching for boundary')
                     traceback.print_exc()
                     pass
 
-            # Try first ascii decoding, then if it fails, the default one (UTF-8)
+            # Try first ASCII decoding, then if it fails, the default one (UTF-8)
             if boundary is not None:
                 json_data = True
-                boundary_hex = ('--' + boundary).encode("ascii").hex()
+                boundary_hex = ''.join('{00:x}'.format(ord(c)) for c in boundary)
                 print('Frame {0}: Processing multipart message. Boundary= {1} (0x{2})'.format(frame_number,
-                                                                                              '--' + boundary,
+                                                                                              boundary,
                                                                                               boundary_hex))
 
                 # Get the other parsed protocols
                 mime_parts = http2_proto_el.findall("proto[@name='mime_multipart']/field[@name='mime_multipart.part']")
-                print('Frame {0}: Found {1} MIME parts by applying boundary {2}'.format(frame_number, len(mime_parts),
-                                                                                        boundary))
+                print('Frame {0}: Found {1} MIME parts by scanning dissected data'.format(
+                    frame_number,
+                    len(mime_parts),
+                    boundary))
                 for idx, mime_part in enumerate(mime_parts):
                     part_data = mime_part.attrib['value']
                     header = mime_part.find("field[@name='mime_multipart.header.content-type']")
@@ -527,6 +552,45 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                                                                                         content_id,
                                                                                                         part_data,
                                                                                                         proto_info)
+                if boundary is not None and boundary_scan:
+                    print('Manual boundary parsing (maybe missing header due to HPACK?). Using boundary {0} (0x{1})'.format(boundary, boundary_hex))
+                    try:
+                        print('Total payload length: {0} bytes, {1} characters. Header and payload length: {2}'.format(
+                            len(data_hex),
+                            len(data_ascii),
+                            ', '.join(['{0}/{1}'.format(e[0], e[1]) for e in multipart_lengths])
+                        ))
+
+                        # Add '--' to the boundary and get rid of starting and end trails
+                        split_str = '2d2d'+boundary_hex
+                        split_payload = data_hex.split(split_str)[1:-1]
+                        # Adjust length as per the length found by the regex
+                        split_payload_clean = []
+                        for idx, payload in enumerate(split_payload):
+                            header_length = multipart_lengths[idx][0]*2
+                            length_to_cut = header_length-len(split_str)
+                            print('Removing {0} additional bytes'.format(length_to_cut))
+                            payload_clean = payload[length_to_cut:]
+
+                            def rchop(s, suffix):
+                                if suffix and s.endswith(suffix):
+                                    return s[:-len(suffix)]
+                                return s
+
+                            payload_clean = rchop(payload_clean, '0d0a')
+                            payload_clean_assembled = '{0}\n{1}'.format(
+                                multipart_descriptions[idx],
+                                hex_string_to_ascii(payload_clean, return_original_if_not_json=True)
+                            )
+
+                            split_payload_clean.append(payload_clean_assembled)
+                        data_ascii = '\n\n'.join(split_payload_clean)
+                        data_ascii = 'Parsed multipart payload (missing header?)\n\n{0}'.format(data_ascii)
+                        # print(data_ascii)
+                    except:
+                        print('Could not manually parse payload')
+                        traceback.print_exc()
+
         except:
             # If data is marked as missing, then there is no data
             print('Frame {0}: could not get HTTP/2 payload. Probably missing'.format(frame_number))
@@ -605,7 +669,8 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_time
         if len(ngap_message_types) > 0:
             ngap_seen = set()
             ngap_seen_add = ngap_seen.add
-            ngap_message_types = ['NGAP {0}'.format(x) for x in ngap_message_types if not (x in ngap_seen or ngap_seen_add(x))]
+            ngap_message_types = ['NGAP {0}'.format(x) for x in ngap_message_types if
+                                  not (x in ngap_seen or ngap_seen_add(x))]
 
         # Search NAS messages
         nas_matches = nas_message_type_regex.finditer(packet.msg_description)
@@ -614,7 +679,8 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_time
             # Remove duplicates: https://stackoverflow.com/questions/480214/how-do-you-remove-duplicates-from-a-list-whilst-preserving-order
             nas_seen = set()
             nas_seen_add = nas_seen.add
-            nas_message_types = ['NAS {0}'.format(x) for x in nas_message_types if not (x in nas_seen or nas_seen_add(x))]
+            nas_message_types = ['NAS {0}'.format(x) for x in nas_message_types if
+                                 not (x in nas_seen or nas_seen_add(x))]
 
         # Print msg. type
         joint_ngap_nas_msg_types = ngap_message_types + nas_message_types
@@ -994,7 +1060,7 @@ def import_pdml(file_paths,
     for idx, packet in enumerate(root.iter('packet')):
         # Note that _ws.malformed is always in the packet root while _ws.expert errors are found within the packet
         packet_is_malformed = (packet.find("proto[@name='_ws.malformed']") is not None) or (
-                    packet.find(".//field[@name='_ws.expert']") is not None)
+                packet.find(".//field[@name='_ws.expert']") is not None)
         if not packet_is_malformed:
             filtered_root_packets.append(packet)
         else:
@@ -1257,7 +1323,7 @@ def import_pdml(file_paths,
                 participants, packet_descriptions, ip_to_pod_mapping, show_selfmessages=show_selfmessages)
         outputs_to_generate['k8s_pod'] = ('_pod', packet_descriptions_per_pod, participants_per_pod, False)
         outputs_to_generate['k8s_namespace'] = (
-        '_namespace', packet_descriptions_per_namespace, participants_per_namespace, False)
+            '_namespace', packet_descriptions_per_namespace, participants_per_namespace, False)
 
     if vm_mapping is not None:
         ip_to_vm_mapping = yaml_parser.load_yaml_vm(vm_mapping)
