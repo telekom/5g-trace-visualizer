@@ -244,7 +244,7 @@ def parse_ipv6_route_advertisement_proto(frame_number, protocol):
     return json_str
 
 
-def parse_icmp_proto(frame_number, protocol):
+def parse_icmp_proto(frame_number, protocol, gtp_proto=None):
     if protocol is None:
         return ''
 
@@ -252,14 +252,28 @@ def parse_icmp_proto(frame_number, protocol):
     icmp_type = protocol.find("field[@name='icmp.type'][@value]")
     if icmp_type is not None:
         icmp_type = icmp_type.attrib['value']
-        if icmp_type == '01':
-            return 'ICMP Echo Reply'
+
+        try:
+            description = protocol.find("field[@name='icmp.type'][@showname]").attrib['showname']
+        except:
+            description = ''
+
+        try:
+            description = '{0} seq={1}/{2}'.format(description,
+                                               protocol.find("field[@name='icmp.seq'][@show]").attrib['show'],
+                                               protocol.find("field[@name='icmp.seq_le'][@show]").attrib['show'])
+        except:
+            pass
+
+        if icmp_type == '00':
+            return description
         if icmp_type == '03':
-            return 'ICMP Destination Unreachable'
+            return description
         if icmp_type == '05':
-            return 'ICMP Redirect'
+            return description
         if icmp_type == '08':
-            return 'ICMP Echo'
+            return description
+
         protocol_dict = nas_5g_proto_to_dict(protocol)
         json_str = yaml.dump(protocol_dict, indent=4, width=1000, sort_keys=False)
         return json_str
@@ -1115,15 +1129,32 @@ def import_pdml(file_paths,
             packet_type = 'ipv4'
         except:
             ip_showname = packet.findall("proto[@name='ipv6']")[-1].attrib['showname']
-            packet_type = 'ipv4'
+            packet_type = 'ipv6'
 
         try:
+            print('{0}: {1}'.format(frame_number, ip_showname))
             ip_match = ip_regex.search(ip_showname)
             ip_src = ip_match.group(1)
             ip_dst = ip_match.group(2)
         except:
             print('Skipped frame {0}'.format(frame_number))
             continue
+
+        gtp_proto = packet.find("proto[@name='gtp']")
+        if gtp_proto is not None:
+            try:
+                ip_showname = packet.findall("proto[@name='ip']")[-2].attrib['showname']
+                packet_type = 'ipv4'
+            except:
+                ip_showname = packet.findall("proto[@name='ipv6']")[-2].attrib['showname']
+                packet_type = 'ipv6'
+            try:
+                print('{0} (GTP): {1}'.format(frame_number, ip_showname))
+                ip_match = ip_regex.search(ip_showname)
+                ip_src = ip_match.group(1)
+                ip_dst = ip_match.group(2)
+            except:
+                pass
 
         # For 5GC
         ngap_proto = packet.find("proto[@name='ngap']")
@@ -1132,7 +1163,6 @@ def import_pdml(file_paths,
         # We found one trace where the PFCP protocol was signaled as ICMP, which messed with the trace
         pfcp_proto = packet.find(".//proto[@name='pfcp']")
 
-        gtp_proto = packet.find("proto[@name='gtp']")
         gtpv2_proto = packet.find("proto[@name='gtpv2']")
 
         # For IPv6 route advertisements
@@ -1187,7 +1217,12 @@ def import_pdml(file_paths,
             protocols.append("IPv6 route advertisement on N3")
         if icmp_proto is not None:
             packet_has_icmp = True
-            protocols.append("ICMP")
+            if gtp_proto is None:
+                # Unencapsulated
+                protocols.append("ICMP")
+            else:
+                # Encapsulated
+                protocols.append("GTP<ICMP>")
         if len(protocols) == 0:
             protocols_str = ''
         else:
@@ -1253,7 +1288,7 @@ def import_pdml(file_paths,
                 print(ipv6_route_advertisement)
             msg_description = ipv6_route_advertisement
         if packet_has_icmp:
-            icmp = parse_icmp_proto(frame_number, icmp_proto)
+            icmp = parse_icmp_proto(frame_number, icmp_proto, gtp_proto)
             if debug:
                 print('ICMP')
                 print(icmp)
