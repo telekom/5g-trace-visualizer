@@ -7,11 +7,13 @@
 import argparse
 import collections
 import json
+import logging
 import os
 import os.path
 import platform
 import re
 import subprocess
+import string
 import sys
 import traceback
 import urllib.parse
@@ -22,6 +24,9 @@ import yaml
 from packaging import version
 
 import yaml_parser
+
+application_logger = logging.getLogger()
+application_logger.setLevel(logging.DEBUG)
 
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
@@ -68,7 +73,6 @@ plant_uml_jar = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plant
 
 max_ascii_length_for_http_payload = 5000
 max_ascii_length_for_json_param = 250
-
 
 def find_nas_proto(ngap_pdu):
     if ngap_pdu is None:
@@ -139,9 +143,9 @@ def xml2json(root):
 
                     out[child_name] = field_content
                 except:
-                    print('ERROR: could not find "showname" attribute for following element')
+                    logging.debug('ERROR: could not find "showname" attribute for following element')
                     child_str = ET.tostring(child)
-                    print(child_str)
+                    logging.debug(child_str)
                     out[child_name] = 'ERROR'
         return out
 
@@ -161,7 +165,7 @@ def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_dup
             is_heartbeat_req = nas_5g_proto.find("field[@name='pfcp.msg_type'][@value='01']")
             is_heartbeat_resp = nas_5g_proto.find("field[@name='pfcp.msg_type'][@value='02']")
             if (is_heartbeat_req is not None) or (is_heartbeat_resp is not None):
-                print('Frame {0}: ignored PFCP heartbeat message'.format(frame_number))
+                logging.debug('Frame {0}: ignored PFCP heartbeat message'.format(frame_number))
                 return None
     except:
         pass
@@ -177,7 +181,7 @@ def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_dup
                                          'pfcp.response_time:' not in e)]
             pfcp_message_to_compare_minus_last_line = '\n'.join(lines_to_consider)
             if (last_pfcp_message == pfcp_message_to_compare_minus_last_line) or (last_pfcp_message == nas_5g_json_str):
-                print('Frame {0}: ignored duplicated PFCP message (same as previous one)'.format(frame_number))
+                logging.debug('Frame {0}: ignored duplicated PFCP message (same as previous one)'.format(frame_number))
                 return None
         except:
             pass
@@ -206,7 +210,7 @@ def parse_nas_proto(frame_number, el, multipart_proto=False):
     try:
         nas_5g_json_str = 'NGAP-PDU: {0}\n{1}'.format(ngap_pdu.attrib['value'], nas_5g_json_str)
     except:
-        print('Frame {0}: Could not add NGAP PDU session payload'.format(frame_number))
+        logging.debug('Frame {0}: Could not add NGAP PDU session payload'.format(frame_number))
 
     return nas_5g_json_str
 
@@ -221,7 +225,7 @@ def parse_gtpv2_proto(frame_number, gtpv2_pdu, show_heartbeat):
             is_heartbeat_req = gtpv2_pdu.find("field[@name='gtpv2.message_type'][@value='01']")
             is_heartbeat_resp = gtpv2_pdu.find("field[@name='gtpv2.message_type'][@value='02']")
             if (is_heartbeat_req is not None) or (is_heartbeat_resp is not None):
-                print('Frame {0}: ignored GTPv2 heartbeat message'.format(frame_number))
+                logging.debug('Frame {0}: ignored GTPv2 heartbeat message'.format(frame_number))
                 return None
     except:
         pass
@@ -260,8 +264,8 @@ def parse_icmp_proto(frame_number, protocol, gtp_proto=None):
 
         try:
             description = '{0} seq={1}/{2}'.format(description,
-                                               protocol.find("field[@name='icmp.seq'][@show]").attrib['show'],
-                                               protocol.find("field[@name='icmp.seq_le'][@show]").attrib['show'])
+                                                   protocol.find("field[@name='icmp.seq'][@show]").attrib['show'],
+                                                   protocol.find("field[@name='icmp.seq_le'][@show]").attrib['show'])
         except:
             pass
 
@@ -295,12 +299,12 @@ def get_http2_fragments(frame_number, stream_id):
 
 def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
     if (frame_number is None) or (stream_id is None):
-        print('Frame {0}: cannot add fragment for frame {1}, stream {2}'.format(current_frame_number, frame_number,
+        logging.debug('Frame {0}: cannot add fragment for frame {1}, stream {2}'.format(current_frame_number, frame_number,
                                                                                 stream_id))
         return False
     fragment_list = get_http2_fragments(frame_number, stream_id)
     fragment_list.append(fragment)
-    print('Frame {0}: {3} fragments for frame {1} stream {2}'.format(current_frame_number, frame_number, stream_id,
+    logging.debug('Frame {0}: {3} fragments for frame {1} stream {2}'.format(current_frame_number, frame_number, stream_id,
                                                                      len(fragment_list)))
     return True
 
@@ -312,7 +316,7 @@ def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_t
             is_tcp_spurious = packet.find(
                 "proto[@name='tcp']/field[@name='tcp.analysis']/field[@name='tcp.analysis.flags']/field[@name='_ws.expert'][@showname='Expert Info (Note/Sequence): This frame is a (suspected) spurious retransmission']")
             if is_tcp_spurious is not None:
-                print('Frame {0}: ignored spurious TCP retransmission'.format(frame_number))
+                logging.debug('Frame {0}: ignored spurious TCP retransmission'.format(frame_number))
                 return None
     except:
         pass
@@ -347,7 +351,7 @@ def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_t
                 streams_seen.add(stream_id)
                 result_final[idx] = result[idx]
             else:
-                print('Frame {0}: multiple DATA frames for stream {1}. frame {2} in HTTP/2 frame'.format(frame_number,
+                logging.debug('Frame {0}: multiple DATA frames for stream {1}. frame {2} in HTTP/2 frame'.format(frame_number,
                                                                                                          stream_id,
                                                                                                          idx))
                 result_final[idx] = ''
@@ -381,7 +385,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
 
     # Filter out empty DATA frames if there are no headers
     if (len(headers) == 0) and (data is not None) and (data.attrib['size'] == '0'):
-        print('Frame {0}: Stream {1}, empty DATA frame'.format(frame_number, stream_id))
+        logging.debug('Frame {0}: Stream {1}, empty DATA frame'.format(frame_number, stream_id))
         return None
 
     # If there is reassembly, where it is to be reassembled
@@ -418,7 +422,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
     if reassembly_frame is not None:
         added_current_fragment_to_cache = add_http2_fragment(reassembly_frame, stream_id, data, frame_number)
         if not added_current_fragment_to_cache:
-            print('Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
+            logging.debug('Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
     else:
         # No reassembly
         reassembly_frame = frame_number
@@ -444,15 +448,16 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                         former_fragments = former_fragments[0:-2]
 
                 prior_data = ''.join([data.attrib['value'] for data in former_fragments])
-                print('Frame {0}: Joined {1} prior HTTP/2 fragments'.format(frame_number, len(former_fragments)))
+                logging.debug('Frame {0}: Joined {1} prior HTTP/2 fragments'.format(frame_number, len(former_fragments)))
             except:
-                print('Could not join HTTP/2 fragments in frame {0}'.format(frame_number))
+                logging.debug('Could not join HTTP/2 fragments in frame {0}'.format(frame_number))
                 traceback.print_exc()
 
             data_hex = prior_data + current_data
             multipart_lengths = []
 
-            def hex_string_to_ascii(http_data_as_hexstring, remove_content_type=False, return_original_if_not_json=False):
+            def hex_string_to_ascii(http_data_as_hexstring, remove_content_type=False,
+                                    return_original_if_not_json=False):
                 http_data_as_hex = bytearray.fromhex(http_data_as_hexstring)
                 ascii_str = ''
                 try:
@@ -477,12 +482,12 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     try:
                         parsed_json = filter_long_json_params(parsed_json, max_ascii_length_for_json_param)
                     except:
-                        print('Frame {0}: Error filtering long JSON parameters'.format(frame_number))
+                        logging.debug('Frame {0}: Error filtering long JSON parameters'.format(frame_number))
 
                     ascii_str = json.dumps(parsed_json, indent=2, sort_keys=False)
                     json_data = True
                 except:
-                    print('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
+                    logging.debug('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
                     if return_original_if_not_json:
                         return http_data_as_hexstring
                 return ascii_str
@@ -492,7 +497,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                 data_ascii = hex_string_to_ascii(data_hex)
                 try:
                     m_all = [m for m in mime_multipart_payload_regex.finditer(data_ascii)]
-                    # print(data_ascii)
+                    # logging.debug(data_ascii)
 
                     # Groups:
                     # 0: All
@@ -512,17 +517,18 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                 return "No Content ID"
                             return a_str
 
-                        multipart_descriptions = ['{0} ({1})'.format(m.group(3), parse_content_id(m.group(5))) for m in m_all]
-                        print(
+                        multipart_descriptions = ['{0} ({1})'.format(m.group(3), parse_content_id(m.group(5))) for m in
+                                                  m_all]
+                        logging.debug(
                             'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
                                 boundary,
                                 len(m_all),
                                 ', '.join(multipart_descriptions),
-                                len(boundary*2)))
+                                len(boundary * 2)))
                         if len(m_all) > 0:
                             boundary_scan = True
                 except:
-                    print('Exception searching for boundary')
+                    logging.debug('Exception searching for boundary')
                     traceback.print_exc()
                     pass
 
@@ -530,13 +536,13 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             if boundary is not None:
                 json_data = True
                 boundary_hex = ''.join('{00:x}'.format(ord(c)) for c in boundary)
-                print('Frame {0}: Processing multipart message. Boundary= {1} (0x{2})'.format(frame_number,
+                logging.debug('Frame {0}: Processing multipart message. Boundary= {1} (0x{2})'.format(frame_number,
                                                                                               boundary,
                                                                                               boundary_hex))
 
                 # Get the other parsed protocols
                 mime_parts = http2_proto_el.findall("proto[@name='mime_multipart']/field[@name='mime_multipart.part']")
-                print('Frame {0}: Found {1} MIME parts by scanning dissected data'.format(
+                logging.debug('Frame {0}: Found {1} MIME parts by scanning dissected data'.format(
                     frame_number,
                     len(mime_parts),
                     boundary))
@@ -544,8 +550,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     part_data = mime_part.attrib['value']
                     header = mime_part.find("field[@name='mime_multipart.header.content-type']")
                     proto_name = header.attrib['show']
-                    print('Frame {0}: Part {1}: {2}'.format(frame_number, idx + 1, proto_name))
-                    print('Frame {0}: Part data: {1}'.format(frame_number, part_data))
+                    logging.debug('Frame {0}: Part {1}: {2}'.format(frame_number, idx + 1, proto_name))
+                    logging.debug('Frame {0}: Part data: {1}'.format(frame_number, part_data))
                     # The first multipart is per spec a JSON body and typically does not have a Content ID
                     try:
                         content_id = mime_part.find("field[@name='mime_multipart.header.content-id']").attrib['show']
@@ -567,23 +573,25 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                                                                                         part_data,
                                                                                                         proto_info)
                 if boundary is not None and boundary_scan:
-                    print('Manual boundary parsing (maybe missing header due to HPACK?). Using boundary {0} (0x{1})'.format(boundary, boundary_hex))
+                    logging.debug(
+                        'Manual boundary parsing (maybe missing header due to HPACK?). Using boundary {0} (0x{1})'.format(
+                            boundary, boundary_hex))
                     try:
-                        print('Total payload length: {0} bytes, {1} characters. Header and payload length: {2}'.format(
+                        logging.debug('Total payload length: {0} bytes, {1} characters. Header and payload length: {2}'.format(
                             len(data_hex),
                             len(data_ascii),
                             ', '.join(['{0}/{1}'.format(e[0], e[1]) for e in multipart_lengths])
                         ))
 
                         # Add '--' to the boundary and get rid of starting and end trails
-                        split_str = '2d2d'+boundary_hex
+                        split_str = '2d2d' + boundary_hex
                         split_payload = data_hex.split(split_str)[1:-1]
                         # Adjust length as per the length found by the regex
                         split_payload_clean = []
                         for idx, payload in enumerate(split_payload):
-                            header_length = multipart_lengths[idx][0]*2
-                            length_to_cut = header_length-len(split_str)
-                            print('Removing {0} additional bytes'.format(length_to_cut))
+                            header_length = multipart_lengths[idx][0] * 2
+                            length_to_cut = header_length - len(split_str)
+                            logging.debug('Removing {0} additional bytes'.format(length_to_cut))
                             payload_clean = payload[length_to_cut:]
 
                             def rchop(s, suffix):
@@ -600,14 +608,14 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                             split_payload_clean.append(payload_clean_assembled)
                         data_ascii = '\n\n'.join(split_payload_clean)
                         data_ascii = 'Parsed multipart payload (missing header?)\n\n{0}'.format(data_ascii)
-                        # print(data_ascii)
+                        # logging.debug(data_ascii)
                     except:
-                        print('Could not manually parse payload')
+                        logging.debug('Could not manually parse payload')
                         traceback.print_exc()
 
         except:
             # If data is marked as missing, then there is no data
-            print('Frame {0}: could not get HTTP/2 payload. Probably missing'.format(frame_number))
+            logging.debug('Frame {0}: could not get HTTP/2 payload. Probably missing'.format(frame_number))
             traceback.print_exc()
             pass
 
@@ -621,7 +629,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
         original_length = len(data_ascii)
         data_ascii = data_ascii[0:max_ascii_length_for_http_payload]
         data_ascii += '\n[...]\n{0} characters truncated'.format(original_length - len(data_ascii))
-        print('Frame {0}: Truncated too long payload message')
+        logging.debug('Frame {0}: Truncated too long payload message')
 
     # Filter out HTTP/2 headers that are in the exclude list
     header_list = [header for header in header_list if header[0] not in ignorehttpheaders_list]
@@ -663,6 +671,11 @@ def filter_long_json_params(parsed_json, max_ascii_length_for_json_param):
             parsed_json[k] = v
 
     return parsed_json;
+
+
+PacketDiagramDescription = collections.namedtuple(
+    'PacketDiagramDescription',
+    'description ip_src ip_dst protocol')
 
 
 def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_timestamp=False):
@@ -785,7 +798,7 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_time
         packet_str = packet_str + '**{0} to {1}**\n'.format(packet.ip_src, packet.ip_dst)
     packet_str = packet_str + 'end note\n'
     packet_str = packet_str + '\n'
-    return (packet_str, packet.ip_src, packet.ip_dst, protocol)
+    return PacketDiagramDescription(packet_str, packet.ip_src, packet.ip_dst, protocol)
 
 
 def move_from_list_to_list(origin, destination, criteria):
@@ -847,7 +860,7 @@ def order_participants(participants, packet_descriptions_str, force_order_str):
     # Reorder participants with force_order list
     force_order = [e.strip() for e in force_order_str.split(',')]
     if len(force_order) > 0:
-        print('Force-ordering participants: {0}'.format(force_order))
+        logging.debug('Force-ordering participants: {0}'.format(force_order))
         new_participants_ordered = []
         for forced_participant_name in force_order:
             participants_to_move = [p[2] for p in participants_ordered if
@@ -857,7 +870,7 @@ def order_participants(participants, packet_descriptions_str, force_order_str):
         move_from_list_to_list(participants_ordered, new_participants_ordered, None)
         participants_ordered = new_participants_ordered
 
-    print('Final participant order: {0}'.format(participants_ordered))
+    logging.debug('Final participant order: {0}'.format(participants_ordered))
     return participants_ordered
 
 
@@ -873,7 +886,7 @@ def output_puml(output_file,
     packet_descriptions_str = [packet_to_str(packet, simple_diagrams, force_show_frames, show_timestamp) for packet in
                                packet_descriptions];
 
-    print('Simple diagrams: {0}'.format(simple_diagrams))
+    logging.debug('Simple diagrams: {0}'.format(simple_diagrams))
     # Second pass if simple diagrams are wanted
     if simple_diagrams:
         packet_descriptions_str_for_ordering = [
@@ -884,7 +897,7 @@ def output_puml(output_file,
 
     participants = order_participants(participants, packet_descriptions_str_for_ordering, force_order)
 
-    print('Outputting PlantUML file to {0}'.format(output_file))
+    logging.debug('Outputting PlantUML file to {0}'.format(output_file))
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write('@startuml\n')
         # Does not look good
@@ -926,13 +939,11 @@ def output_puml(output_file,
 
 
 def generate_new_participants(participants, new_packet_descriptions):
+    # Source and destination as key
     packet_participants = set(
         [packet[0] for packet in new_packet_descriptions] + [packet[1] for packet in new_packet_descriptions])
     new_participants = []
     current_participants = {}
-    for current_participant in current_participants:
-        current_participants[p[1]] = current_participant
-
     for packet_participant in packet_participants:
         if packet_participant in current_participants:
             # Current IP, keep name as-is
@@ -1024,6 +1035,16 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping, show_selfmessages=False):
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
 
+def read_cleanup_and_load_pdml_file(file_path):
+    # The exported PDML file may contain "gremlin characters" which the parse does NOT like. So first we have to cleanup
+    with open(file_path, 'r', encoding='utf8') as f:
+        content = f.read()
+        filtered_content = ''.join(filter(lambda x: x in string.printable, content))
+    with open(file_path, 'w', encoding='utf-8') as f:
+        f.write(filtered_content)
+    return ET.parse(file_path)
+
+
 def import_pdml(file_paths,
                 pod_mapping=None,
                 limit=100,
@@ -1038,13 +1059,13 @@ def import_pdml(file_paths,
                 ignore_pfcp_duplicate_packets=True,
                 show_timestamp=False,
                 show_selfmessages=False):
-    print('PDML file path(s): {0}'.format(file_paths))
+    logging.debug('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
         ignorehttpheaders_list = []
     else:
         ignorehttpheaders_list = [e.strip() for e in ignorehttpheaders.split(',')]
-        print('HTTP/2 headers to ignore: {0}'.format(ignorehttpheaders_list))
+        logging.debug('HTTP/2 headers to ignore: {0}'.format(ignorehttpheaders_list))
 
     # First file is the main PDML file. Rest are alternatives
     file_path = file_paths[0]
@@ -1053,24 +1074,24 @@ def import_pdml(file_paths,
     else:
         alternative_file_paths = []
 
-    print('Importing main file {0}'.format(file_path))
+    logging.debug('Importing main file {0}'.format(file_path))
     if not os.path.exists(file_path):
-        print('File does not exist')
+        logging.debug('File does not exist')
         return None
-    tree = ET.parse(file_path)
+    tree = read_cleanup_and_load_pdml_file(file_path)
     root = tree.getroot()
 
-    print('Importing {0} alternative files'.format(len(alternative_file_paths)))
+    logging.debug('Importing {0} alternative files'.format(len(alternative_file_paths)))
     alternative_packet_iterators = []
     for alternative_file_path in alternative_file_paths:
-        print('Alternative PDML file: {0}'.format(alternative_file_path))
-        alternative_tree = ET.parse(alternative_file_path)
+        logging.debug('Alternative PDML file: {0}'.format(alternative_file_path))
+        alternative_tree = read_cleanup_and_load_pdml_file(alternative_file_path)
         alternative_root = alternative_tree.getroot()
         alternative_packet_iterators.append(list(alternative_root.iter('packet')))
 
     # Check for packets with "showname="[Malformed Packet" and substitute with alternative version if so required
     filtered_root_packets = []
-    print('Checking for malformed packets (can decode with more than one WS version)')
+    logging.debug('Checking for malformed packets (can decode with more than one WS version)')
     for idx, packet in enumerate(root.iter('packet')):
         # Note that _ws.malformed is always in the packet root while _ws.expert errors are found within the packet
         packet_is_malformed = (packet.find("proto[@name='_ws.malformed']") is not None) or (
@@ -1079,28 +1100,28 @@ def import_pdml(file_paths,
             filtered_root_packets.append(packet)
         else:
             # Find candidate
-            print('WARNING: Packet {0} is malformed'.format(idx))
+            logging.debug('WARNING: Packet {0} is malformed'.format(idx))
             alternative_found = False
             for alternative_packet_iterator in alternative_packet_iterators:
                 alternative_packet = alternative_packet_iterator[idx]
                 alternative_packet_is_malformed = (alternative_packet.find("proto[@name='_ws.malformed']") is not None)
                 if not alternative_packet_is_malformed:
-                    print('Alternative for packet {0} found'.format(idx))
+                    logging.debug('Alternative for packet {0} found'.format(idx))
                     filtered_root_packets.append(alternative_packet)
                     alternative_found = True
                     continue
             # No candidate found
             if not alternative_found:
-                print('Alternative for packet {0} not found. Using original packet'.format(idx))
+                logging.debug('Alternative for packet {0} not found. Using original packet'.format(idx))
                 filtered_root_packets.append(packet)
 
     packet_descriptions = []
     destinations = set()
 
     if root.tag == 'pdml':
-        print('Root tag is "pdml": OK')
+        logging.debug('Root tag is "pdml": OK')
     else:
-        print('Root tag is "pdml": ERROR')
+        logging.debug('Root tag is "pdml": ERROR')
         return None
 
     last_pfcp_message = None
@@ -1122,7 +1143,7 @@ def import_pdml(file_paths,
         ipv6_protocs = packet.findall("proto[@name='ipv6']")
         # Skip ARP and similars (see #3). Should only happen if you directly import a PDML file.
         if len(ipv4_protos) == 0 and len(ipv6_protocs) == 0:
-            print('Skipping non-IP packet {0}'.format(idx))
+            logging.debug('Skipping non-IP packet {0}'.format(idx))
             continue
         try:
             ip_showname = packet.findall("proto[@name='ip']")[-1].attrib['showname']
@@ -1132,12 +1153,12 @@ def import_pdml(file_paths,
             packet_type = 'ipv6'
 
         try:
-            print('{0}: {1}'.format(frame_number, ip_showname))
+            logging.debug('{0}: {1}'.format(frame_number, ip_showname))
             ip_match = ip_regex.search(ip_showname)
             ip_src = ip_match.group(1)
             ip_dst = ip_match.group(2)
         except:
-            print('Skipped frame {0}'.format(frame_number))
+            logging.debug('Skipped frame {0}'.format(frame_number))
             continue
 
         gtp_proto = packet.find("proto[@name='gtp']")
@@ -1149,7 +1170,7 @@ def import_pdml(file_paths,
                 ip_showname = packet.findall("proto[@name='ipv6']")[-2].attrib['showname']
                 packet_type = 'ipv6'
             try:
-                print('{0} (GTP): {1}'.format(frame_number, ip_showname))
+                logging.debug('{0} (GTP): {1}'.format(frame_number, ip_showname))
                 ip_match = ip_regex.search(ip_showname)
                 ip_src = ip_match.group(1)
                 ip_dst = ip_match.group(2)
@@ -1230,68 +1251,68 @@ def import_pdml(file_paths,
 
         # Fix strange case that sometimes PFCP messages are shown in the GUI as ICMP destination unreachable (no idea why this happens)
         if packet_has_pfcp and packet_has_icmp:
-            print('Fixing wrong PFCP message shown as ICMP')
+            logging.debug('Fixing wrong PFCP message shown as ICMP')
             packet_has_icmp = False
 
         if debug:
-            print('Frame {0} ({4}): {1} to {2}, {3}'.format(idx, ip_src, ip_dst, protocols_str, frame_number))
+            logging.debug('Frame {0} ({4}): {1} to {2}, {3}'.format(idx, ip_src, ip_dst, protocols_str, frame_number))
         msg_description = ''
         if packet_has_http2:
             http2_request = parse_http_proto(frame_number, http2_proto, ignorehttpheaders_list,
                                              ignore_spurious_tcp_retransmissions, packet)
             if debug:
-                print('SBI')
-                print(http2_request)
+                logging.debug('SBI')
+                logging.debug(http2_request)
             msg_description = http2_request
         if packet_has_ngap:
             nas_request = parse_nas_proto(frame_number, ngap_proto)
             if debug:
-                print('NAS')
-                print(nas_request)
+                logging.debug('NAS')
+                logging.debug(nas_request)
             msg_description = nas_request
         if packet_has_gtpv2:
             gtpv2_request = parse_gtpv2_proto(frame_number, gtpv2_proto, show_heartbeat)
             if debug:
-                print('GTPv2')
-                print(gtpv2_request)
+                logging.debug('GTPv2')
+                logging.debug(gtpv2_request)
             msg_description = gtpv2_request
         if diameter_proto:
             diameter_request = parse_gtpv2_proto(frame_number, diameter_proto, show_heartbeat)
             if debug:
-                print('Diameter')
-                print(diameter_request)
+                logging.debug('Diameter')
+                logging.debug(diameter_request)
             msg_description = diameter_request
         if radius_proto:
             radius_request = parse_gtpv2_proto(frame_number, radius_proto, show_heartbeat)
             if debug:
-                print('RADIUS')
-                print(radius_request)
+                logging.debug('RADIUS')
+                logging.debug(radius_request)
             msg_description = radius_request
         if gtpprime_proto:
             gtpprime_request = parse_gtpv2_proto(frame_number, gtpprime_proto, show_heartbeat)
             if debug:
-                print("GTP'")
-                print(gtpprime_request)
+                logging.debug("GTP'")
+                logging.debug(gtpprime_request)
             msg_description = gtpprime_request
         if packet_has_pfcp:
             pfcp_request = parse_pfcp_proto(frame_number, pfcp_proto, show_heartbeat, ignore_pfcp_duplicate_packets,
                                             last_pfcp_message)
             last_pfcp_message = pfcp_request
             if debug:
-                print('PFCP')
-                print(pfcp_request)
+                logging.debug('PFCP')
+                logging.debug(pfcp_request)
             msg_description = pfcp_request
         if packet_has_ipv6_route_advertisement:
             ipv6_route_advertisement = parse_ipv6_route_advertisement_proto(frame_number, route_advertisement_proto)
             if debug:
-                print('IPv6 route advertisement')
-                print(ipv6_route_advertisement)
+                logging.debug('IPv6 route advertisement')
+                logging.debug(ipv6_route_advertisement)
             msg_description = ipv6_route_advertisement
         if packet_has_icmp:
             icmp = parse_icmp_proto(frame_number, icmp_proto, gtp_proto)
             if debug:
-                print('ICMP')
-                print(icmp)
+                logging.debug('ICMP')
+                logging.debug(icmp)
             msg_description = icmp
 
         # Calculate timestamp offsett
@@ -1344,9 +1365,12 @@ def import_pdml(file_paths,
     outputs_to_generate = {}
     outputs_to_generate['ip'] = ('', packet_descriptions, participants, False)  # Remove ugly legend
 
+    if diagrams_to_output == 'raw':
+        return packet_descriptions
+
     # Pod information if  available
     if pod_mapping is not None:
-        print('Applying pod and pod namespace mapping')
+        logging.debug('Applying pod and pod namespace mapping')
         pod_mapping_list = pod_mapping.split(',')
         ip_to_pod_mapping = yaml_parser.load_yaml_list(pod_mapping_list)
         if ip_to_pod_mapping is not None:
@@ -1374,9 +1398,9 @@ def import_pdml(file_paths,
     output_files = []
     for k, output_to_generate in outputs_to_generate.items():
         if k not in diagrams_to_output:
-            print('Skipping generating Plant UML file for {0}'.format(k))
+            logging.debug('Skipping generating Plant UML file for {0}'.format(k))
             continue
-        print('Generating Plant UML file for {0}'.format(k))
+        logging.debug('Generating Plant UML file for {0}'.format(k))
         suffix = output_to_generate[0]
         packet_descriptions = output_to_generate[1]
         print_legend = output_to_generate[3]
@@ -1419,7 +1443,7 @@ def call_wireshark(wireshark_versions, input_file_str, http2ports_string):
     wireshark_versions_list = [e.strip() for e in wireshark_versions.split(',')]
     output_files = []
     for wireshark_version in wireshark_versions_list:
-        print('Preparing call for Wireshark version {0}'.format(wireshark_version))
+        logging.debug('Preparing call for Wireshark version {0}'.format(wireshark_version))
         output_file = call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string)
         output_files.append(output_file)
     return output_files
@@ -1441,8 +1465,8 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         ]
         for input_filename in input_files:
             mergecap_command.append(input_filename)
-        print('Merging pcap files to {0}'.format(output_filename))
-        print(mergecap_command)
+        logging.debug('Merging pcap files to {0}'.format(output_filename))
+        logging.debug(mergecap_command)
         subprocess.run(mergecap_command)
         input_file = output_filename
         merged = True
@@ -1451,7 +1475,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     filename, file_extension = os.path.splitext(input_file)
     if file_extension == '.pdml':
-        print('No need to invoke tshark. PDML file already input')
+        logging.debug('No need to invoke tshark. PDML file already input')
         return input_file
 
     # Add option to not use a Wireshark portable version but rather the OS-installed one
@@ -1461,7 +1485,13 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         tshark_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark',
                                                'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark',
                                                'tshark')
-    print('tshark path: {0}'.format(tshark_path))
+    logging.debug('tshark path: {0}'.format(tshark_path))
+
+    # Add folder check to make more understandable error messages
+    tshark_folder = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark',
+                                             'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark')
+    if not os.path.isdir(tshark_folder):
+        raise FileNotFoundError('Could not find tshark on path {0}'.format(tshark_path))
 
     if not merged:
         output_file = '{0}_{1}.pdml'.format(filename, wireshark_version)
@@ -1484,15 +1514,15 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         tshark_command.append('tcp.port=={0},http2'.format(port))
 
     # Add 5GS null ciphering decode (WS versions >=3)
-    print('Using Wireshark version {0}'.format(wireshark_version))
+    logging.debug('Using Wireshark version {0}'.format(wireshark_version))
 
     # Assume that a current Wireshark version is installed in the machine
     if wireshark_version == 'OS' or (version.parse(wireshark_version) >= version.parse('3.0.0')):
-        print('Wireshark supports nas-5gs.null_decipher option. Applying')
+        logging.debug('Wireshark supports nas-5gs.null_decipher option. Applying')
         tshark_command.append('-o')
         tshark_command.append('nas-5gs.null_decipher: TRUE')
     else:
-        print('Wireshark version <3.0.0. Not applying nas-5gs.null_decipher option. Applying')
+        logging.debug('Wireshark version <3.0.0. Not applying nas-5gs.null_decipher option. Applying')
 
     # Added disabling name resolution (see #2). Reference: https://tshark.dev/packetcraft/add_context/name_resolution/
     # Added GTPv2 for N26 messages and TCP to filter out spurious TCP retransmissions
@@ -1507,12 +1537,12 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         '-n'
     ])
 
-    print('Generating PDML files from PCAP to {0}'.format(output_file))
-    print(tshark_command)
+    logging.debug('Generating PDML files from PCAP to {0}'.format(output_file))
+    logging.debug(tshark_command)
     with open(output_file, "w") as outfile:
         subprocess.run(tshark_command, stdout=outfile)
 
-    print('Output {0}'.format(output_file))
+    logging.debug('Output {0}'.format(output_file))
     return output_file
 
 
@@ -1523,10 +1553,10 @@ def output_files_as_svg(output_files):
             plant_uml_command = '{0} -v'.format(plant_uml_command)
         generate_svg = '{0} -tsvg'.format(plant_uml_command)
         try:
-            print('Generating SVG diagram {1}/{2}: {0}'.format(generate_svg, counter + 1, len(output_files)))
+            logging.debug('Generating SVG diagram {1}/{2}: {0}'.format(generate_svg, counter + 1, len(output_files)))
             os.system(generate_svg)
         except:
-            print('Could not generate SVG diagram')
+            logging.debug('Could not generate SVG diagram')
             traceback.print_exc()
 
 
@@ -1540,19 +1570,44 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+sbi_regex = re.compile(r'.*/(n.*)(/v\d.*)/(.*)')
+sbi_regex2 = re.compile(r'.*/(n.*)(/v\d.*)/(.*)/(.*)')
+sbiUrlDescription = collections.namedtuple('SbiDescription', 'nf call')
+def parse_sbi_type_from_url(sbi_url):
+    # Examples:
+    # POST  /nsmf-pdusession/v1/sm-contexts
+    # GET  /nudm-sdm/v1/imsi-234100000000000/sm-data
+    # HTTP/2 200 rsp.
+    # POST  /nudm-sdm/v1/imsi-234100000000000/sdm-subscriptions
+    # HTTP/2 req.\\nDELETE  /nudm-uecm/v1/imsi-234100000000000/registrations/smf-registrations/6
+    # HTTP/2 req.\\nPOST  /nsmf-pdusession/v1/sm-contexts
+    match = sbi_regex.match(sbi_url)
+    if match is None:
+        return None
+    nf = match.group(1)
+    call = match.group(3)
+    try:
+        # if this is an ID, this most probably a smf-registrations ID or similar
+        int(call)
+        match = sbi_regex2.match(sbi_url)
+        call = match.group(3)
+    except:
+        pass
+    return sbiUrlDescription(nf, call)
+
 
 if __name__ == '__main__':
-    print('Searching for plantuml.jar under {0}'.format(plant_uml_jar))
+    logging.debug('Searching for plantuml.jar under {0}'.format(plant_uml_jar))
     if os.path.exists(plant_uml_jar):
-        print('Found plantuml.jar\n')
+        logging.debug('Found plantuml.jar\n')
     else:
-        print('NOT FOUND')
-        print(
+        logging.debug('NOT FOUND')
+        logging.debug(
             "Please follow the instruction in README.md and go to http://plantuml.com/download to download PlantUML's JAR file")
         sys.exit(2)
 
     platform = platform.system()
-    print('Platform system detected: {0}'.format(platform))
+    logging.debug('Platform system detected: {0}'.format(platform))
 
     parser = argparse.ArgumentParser(
         description='5G Wireshark trace visualizer for 5G protocol. Generates a .puml PlantUML file based on the specified PDML file. The output file is output in the same directory as the specified PDML file. Optionally, a Kubernetes pod file (YAML) can be used to further map trace IPs to pod names and namespaces')

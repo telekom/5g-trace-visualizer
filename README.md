@@ -258,6 +258,44 @@ The result can be seen below:
 
 Maybe some editing features will be added in the feature, but will depend on whether that is really needed or not.
 
+### Plotting 5GC traces
+
+The ``trace_plotting`` script provides some funcitonality to convert packet traces to [DataFrame](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.html) format and to plot the resulting data using [plotly](https://plotly.com/python/).
+
+The following example script can be used to plot a 5GC packet capture on a time axis. Do note that we are just plotting the first ``plot_data`` element (you can trace multiple capture files simultanously). The color bars use the same protocol color code as the sequence diagram.
+
+```
+packets_df = trace_plotting.import_pcap_as_dataframe(
+    'doc/free5gc.pcap', 
+    http2_ports = "32445,5002,5000,32665,80,32077,5006,8080,3000,8081",
+    wireshark_version = '3.4.0rc1')
+plot_data = trace_plotting.generate_scatterplots_for_wireshark_traces(packets_df, filter_column='file')[0]
+fig = go.Figure(data=plot_data)
+fig.update_layout(shapes=trace_plotting.get_protocol_shapes(packets_df, y_axis='y'))
+
+fig.show()
+```
+
+![5GC visualization of messages over time](doc/free5gc_pcap_plot.png) 
+
+More interactive HTML version available [here](doc/free5gc_pcap_plot.html).
+
+The [k8s metrics](plotting_k8s_metrics.ipynb) [Jupyter Notebook](https://jupyter.org/) shows a more complex use case where k8s KPIs and packet traces can be plotted on a common time axis (no example data provided for this case). The end result woud look as shown below:
+
+![5GC visualization of messages over time](doc/k8s_packet_trace_example.png)
+
+In the case of the k8s KPIs, the data needs to be in the format output by ``kubectl get --raw /apis/metrics.k8s.io/v1beta1/pods/`` per line.
+
+Example script:
+```
+#!/bin/bash
+kubectl get --raw /apis/metrics.k8s.io/v1beta1/pods/ > kpidump.log
+while true; do
+  kubectl get --raw /apis/metrics.k8s.io/v1beta1/pods/ >> kpidump.log
+  sleep 2
+done
+```
+
 ## Notes
 
 There may be some issues with HTTP/2 frame fragment reconstruction, so drop me a line if you find some issues
