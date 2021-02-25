@@ -1058,7 +1058,8 @@ def import_pdml(file_paths,
                 ignore_spurious_tcp_retransmissions=True,
                 ignore_pfcp_duplicate_packets=True,
                 show_timestamp=False,
-                show_selfmessages=False):
+                show_selfmessages=False,
+                ips_to_ignore=''):
     logging.debug('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -1066,6 +1067,11 @@ def import_pdml(file_paths,
     else:
         ignorehttpheaders_list = [e.strip() for e in ignorehttpheaders.split(',')]
         logging.debug('HTTP/2 headers to ignore: {0}'.format(ignorehttpheaders_list))
+
+    try:
+        ips_to_ignore_list = [ e.strip() for e in ips_to_ignore.split(',') ]
+    except:
+        ips_to_ignore_list = []
 
     # First file is the main PDML file. Rest are alternatives
     file_path = file_paths[0]
@@ -1159,6 +1165,10 @@ def import_pdml(file_paths,
             ip_dst = ip_match.group(2)
         except:
             logging.debug('Skipped frame {0}'.format(frame_number))
+            continue
+
+        if ip_src in ips_to_ignore_list or ip_dst in ips_to_ignore_list:
+            logging.debug('Skipped frame {0} (in ignore list)'.format(frame_number))
             continue
 
         gtp_proto = packet.find("proto[@name='gtp']")
@@ -1649,6 +1659,8 @@ if __name__ == '__main__':
                         help='Whether you want to show the message timestamps in the diagram. Default is "False"')
     parser.add_argument('-show_selfmessages', type=str2bool, required=False, default=False,
                         help='Whether you want to show self-messages. You may want to turn this to "True" if you are running a trace on localhost. Default is "False"')
+    parser.add_argument('-exclude_ips', type=str, required=False, default='',
+                        help='IPs you want to exclude from the output diagram')
 
     args = parser.parse_args()
 
@@ -1674,6 +1686,7 @@ if __name__ == '__main__':
     print('Ignore PFCP packet duplicates: {0}'.format(args.ignore_pfcp_duplicate_packets))
     print('Show timestamp in diagram: {0}'.format(args.show_timestamp))
     print('Show self-messages: {0}'.format(args.show_selfmessages))
+    print('Excluded IPs: {0}'.format(args.exclude_ips))
     print()
 
     http2_string_unescape = args.unescapehttp
@@ -1706,7 +1719,9 @@ if __name__ == '__main__':
         args.ignore_spurious_tcp_retransmissions,
         args.ignore_pfcp_duplicate_packets,
         args.show_timestamp,
-        args.show_selfmessages)
+        args.show_selfmessages,
+        args.exclude_ips
+    )
 
     if args.svg:
         print('Converting .puml files to SVG')
