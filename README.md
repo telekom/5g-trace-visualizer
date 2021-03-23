@@ -6,6 +6,7 @@
   * [Application structure](#application-structure)
   * [Examples](#examples)
     * [Help](#help)
+    * [Wireshark Portable](#wireshark-portable)
     * [5GC Trace](#5gc-trace)
     * [HTTP/2 trace](#http2-trace)
     * [Adding pod data](#adding-pod-data)
@@ -60,6 +61,20 @@ The figure below summarizes what this small application does ([SVG](doc/summary.
 ### Help
 
 Run ``python trace_visualizer.py --help`` for a list of all available parameters, default values and other things you may need.
+
+### Wireshark Portable
+
+The ``-wireshark`` option lets you use a specific Wireshark version. The way this works is by using this parameter to generate the path for the ``tshark`` and ,if more than one trace is specified, ``mergecap``, call. It is a scripted command, nothing more:
+* ``OS``: no absolute path for ``tshark`` is generated. That is, the ``tshark`` from the OS's path will be used
+* ``<version number>``: an absolute path location for the ``tshark`` executable is generated. The executable is assumed to be located in the following location: ``wireshark/WiresharkPortable_<version number>``.
+
+Example: [WiresharkPortable version 3.4.4](https://1.eu.dl.wireshark.org/win32/WiresharkPortable_3.4.4.paf.exe) should be placed in a directory named ``WiresharkPortable_3.4.4``.
+
+Do note that "Wireshark Portable" applies to Windows only. In Linux, the same concept applies. Just make sure that the script can find ``tshark`` and ``mergecap`` where it expects to. That is:
+* ``tshark``: ``wireshark/WiresharkPortable_<version number>/App/Wireshark/tshark``
+* ``mergecap``: ``wireshark/WiresharkPortable_<version number>/App/Wireshark/mergecap``
+
+Note: whether symlinks work is not tested.
 
 ### 5GC trace
 
