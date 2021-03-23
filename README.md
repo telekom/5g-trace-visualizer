@@ -5,6 +5,11 @@
   * [Requirements](#requirements)
   * [Application structure](#application-structure)
   * [Plotting Scripts](#plotting-scripts)
+    * [Parsing Spirent Result Files](#parsing-spirent-result-files)
+    * [Plotting 5GC messages](#plotting-5gc-messages)
+    * [Plotting 5GC messages and k8s load](#plotting-5gc-messages-and-k8s-load)
+    * [Plotting User Plane latency](#plotting-user-plane-latency)
+    * [Comparing User Plane latency](#comparing-user-plane-latency)
   * [Examples](#examples)
     * [Help](#help)
     * [Wireshark Portable](#wireshark-portable)
@@ -76,9 +81,9 @@ consider them as just examples how you could accomplish such visualization(s).
   
 The following scripts are included:
 
-### Spirent Result Files
+### Parsing Spirent Result Files
 
-File: ``plotting_parsing_spirent.ipynb``
+File: [``plotting_parsing_spirent.ipynb``](plotting_parsing_spirent.ipynb)
 
 For those of you using Spirent for testing, you may need to quickly compare certain parameters 
 (e.g. ``Basic Data Message One Way Trip Delay (micro-sec)``).
@@ -94,7 +99,7 @@ For obvious reasons, no example files are provided.
 
 ### Plotting 5GC messages
 
-File: ``plotting_pcap.ipynb``
+File: [``plotting_pcap.ipynb``](plotting_pcap.ipynb)
 
 This cript provides some functionality to convert packet traces to 
 [DataFrame](https://pandas.pydata.org/pandas-docs/stable/reference/api/pandas.DataFrame.html) format and to plot the 
@@ -110,7 +115,7 @@ More interactive HTML version available [here](doc/free5gc_pcap_plot.html).
 
 ### Plotting 5GC messages and k8s load
 
-File: ``plotting_k8s_metrics.ipynb``
+File: [``plotting_k8s_metrics.ipynb``](plotting_k8s_metrics.ipynb)
 
 This script shows a more complex use case where k8s KPIs and packet traces can be plotted on a common time axis 
 (no example raw data provided for this case). The end result would look as shown below:
@@ -118,6 +123,49 @@ This script shows a more complex use case where k8s KPIs and packet traces can b
 ![5GC visualization of messages over time](doc/k8s_packet_trace_example.png)
 
 In the case of the k8s KPIs, the data needs to be in the format output by ``kubectl get --raw /apis/metrics.k8s.io/v1beta1/pods/`` per line.
+
+### Plotting User Plane latency
+
+File: [``plotting_latency_analysis.ipynb``](plotting_latency_analysis.ipynb)
+
+Given:
+  * A test case where UDP or ICMP packets are transmitted between UE and DN
+  * That each generated packet has a unique data payload
+  * A packet trace of N3 packets (GTP-U)
+  * A packet trace of N6 packets
+  * That the hosts doing each capture are time-synchronized (or are the same host)
+  * This is usually the case if you use commonly-used test tools to test User Plane (UP)
+
+This script calculated the one-way delay for each single packet and plots a normalized histogram (i.e. a distribution)
+of the packet latency.
+
+The packet parsing does not use the [lxml](https://lxml.de/) library for parsing because it proved to be too resource-intensive
+to parse the whole PDML file just to get the payloads, so a custom XML parser is used instead. for ca. 90k packets, each
+trace took around 2 minutes on an i7 laptop without needing too much memory.
+
+To enable re-use of the parsed data without having to parse again the ``pcap`` files, the parsed data is stored in
+[``pickle``](https://docs.python.org/3/library/pickle.html) format and compressed with 
+[``bz2``](https://docs.python.org/3/library/bz2.html).
+
+Result based on the example data included ([N3 capture](doc/n3_example.pcap), [N6 capture](doc/n6_example.pcap)):
+
+![5GC visualization of messages over time](doc/UP_latency.png)
+
+Resulting (compressed) Pickle file: [UP_example_analysis.pbz2](doc/UP_example_analysis.pbz2)
+
+### Comparing User Plane latency
+
+File: [``plotting_latency_compare.ipynb``](plotting_latency_compare.ipynb)
+
+Used for comparing latency data of several analyzed user plane captures. Separated from the parsing script so as to avoid
+re-parsing every time.
+
+Result based on the example data included 
+(based on importing [UP_example_analysis.pbz2](doc/UP_example_analysis.pbz2) and [UP_example_analysis_2.pbz2](doc/UP_example_analysis_2.pbz2)):
+
+![5GC visualization of messages over time](doc/UP_latency_comparison.png)
+
+HTML version (interactive): [latency_comparison.html](doc/latency_comparison.html)
 
 ## Examples
 
