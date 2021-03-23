@@ -10,10 +10,11 @@ import json
 import logging
 import os
 import os.path
+import os.path
 import platform
 import re
-import subprocess
 import string
+import subprocess
 import sys
 import traceback
 import urllib.parse
@@ -73,6 +74,7 @@ plant_uml_jar = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plant
 
 max_ascii_length_for_http_payload = 5000
 max_ascii_length_for_json_param = 250
+
 
 def find_nas_proto(ngap_pdu):
     if ngap_pdu is None:
@@ -299,13 +301,15 @@ def get_http2_fragments(frame_number, stream_id):
 
 def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
     if (frame_number is None) or (stream_id is None):
-        logging.debug('Frame {0}: cannot add fragment for frame {1}, stream {2}'.format(current_frame_number, frame_number,
-                                                                                stream_id))
+        logging.debug(
+            'Frame {0}: cannot add fragment for frame {1}, stream {2}'.format(current_frame_number, frame_number,
+                                                                              stream_id))
         return False
     fragment_list = get_http2_fragments(frame_number, stream_id)
     fragment_list.append(fragment)
-    logging.debug('Frame {0}: {3} fragments for frame {1} stream {2}'.format(current_frame_number, frame_number, stream_id,
-                                                                     len(fragment_list)))
+    logging.debug(
+        'Frame {0}: {3} fragments for frame {1} stream {2}'.format(current_frame_number, frame_number, stream_id,
+                                                                   len(fragment_list)))
     return True
 
 
@@ -351,9 +355,10 @@ def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_t
                 streams_seen.add(stream_id)
                 result_final[idx] = result[idx]
             else:
-                logging.debug('Frame {0}: multiple DATA frames for stream {1}. frame {2} in HTTP/2 frame'.format(frame_number,
-                                                                                                         stream_id,
-                                                                                                         idx))
+                logging.debug(
+                    'Frame {0}: multiple DATA frames for stream {1}. frame {2} in HTTP/2 frame'.format(frame_number,
+                                                                                                       stream_id,
+                                                                                                       idx))
                 result_final[idx] = ''
 
     result_final = [e for e in result_final if e != '']
@@ -422,7 +427,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
     if reassembly_frame is not None:
         added_current_fragment_to_cache = add_http2_fragment(reassembly_frame, stream_id, data, frame_number)
         if not added_current_fragment_to_cache:
-            logging.debug('Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
+            logging.debug(
+                'Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
     else:
         # No reassembly
         reassembly_frame = frame_number
@@ -448,7 +454,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                         former_fragments = former_fragments[0:-2]
 
                 prior_data = ''.join([data.attrib['value'] for data in former_fragments])
-                logging.debug('Frame {0}: Joined {1} prior HTTP/2 fragments'.format(frame_number, len(former_fragments)))
+                logging.debug(
+                    'Frame {0}: Joined {1} prior HTTP/2 fragments'.format(frame_number, len(former_fragments)))
             except:
                 logging.debug('Could not join HTTP/2 fragments in frame {0}'.format(frame_number))
                 traceback.print_exc()
@@ -537,8 +544,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                 json_data = True
                 boundary_hex = ''.join('{00:x}'.format(ord(c)) for c in boundary)
                 logging.debug('Frame {0}: Processing multipart message. Boundary= {1} (0x{2})'.format(frame_number,
-                                                                                              boundary,
-                                                                                              boundary_hex))
+                                                                                                      boundary,
+                                                                                                      boundary_hex))
 
                 # Get the other parsed protocols
                 mime_parts = http2_proto_el.findall("proto[@name='mime_multipart']/field[@name='mime_multipart.part']")
@@ -577,11 +584,12 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                         'Manual boundary parsing (maybe missing header due to HPACK?). Using boundary {0} (0x{1})'.format(
                             boundary, boundary_hex))
                     try:
-                        logging.debug('Total payload length: {0} bytes, {1} characters. Header and payload length: {2}'.format(
-                            len(data_hex),
-                            len(data_ascii),
-                            ', '.join(['{0}/{1}'.format(e[0], e[1]) for e in multipart_lengths])
-                        ))
+                        logging.debug(
+                            'Total payload length: {0} bytes, {1} characters. Header and payload length: {2}'.format(
+                                len(data_hex),
+                                len(data_ascii),
+                                ', '.join(['{0}/{1}'.format(e[0], e[1]) for e in multipart_lengths])
+                            ))
 
                         # Add '--' to the boundary and get rid of starting and end trails
                         split_str = '2d2d' + boundary_hex
@@ -1035,14 +1043,23 @@ def map_vm_ips(output_to_generate, ip_to_vm_mapping, show_selfmessages=False):
     return (suffix, new_packet_descriptions, new_participants, print_legend)
 
 
+def character_is_printable(x):
+    return x in string.printable
+
+
 def read_cleanup_and_load_pdml_file(file_path):
     # The exported PDML file may contain "gremlin characters" which the parse does NOT like. So first we have to cleanup
+    logging.debug('Cleaning up PDML file {0}'.format(file_path))
     with open(file_path, 'r', encoding='utf8') as f:
         content = f.read()
-        filtered_content = ''.join(filter(lambda x: x in string.printable, content))
+        filtered_content = ''.join(filter(character_is_printable, content))
     with open(file_path, 'w', encoding='utf-8') as f:
         f.write(filtered_content)
-    return ET.parse(file_path)
+    logging.debug('Finished cleaning up PDML file')
+    logging.debug('Parsing PDML file {0}'.format(file_path))
+    parsed_et = ET.parse(file_path)
+    logging.debug('Finished parsing PDML file')
+    return parsed_et
 
 
 def import_pdml(file_paths,
@@ -1058,8 +1075,7 @@ def import_pdml(file_paths,
                 ignore_spurious_tcp_retransmissions=True,
                 ignore_pfcp_duplicate_packets=True,
                 show_timestamp=False,
-                show_selfmessages=False,
-                ips_to_ignore=''):
+                show_selfmessages=False):
     logging.debug('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -1067,11 +1083,6 @@ def import_pdml(file_paths,
     else:
         ignorehttpheaders_list = [e.strip() for e in ignorehttpheaders.split(',')]
         logging.debug('HTTP/2 headers to ignore: {0}'.format(ignorehttpheaders_list))
-
-    try:
-        ips_to_ignore_list = [ e.strip() for e in ips_to_ignore.split(',') ]
-    except:
-        ips_to_ignore_list = []
 
     # First file is the main PDML file. Rest are alternatives
     file_path = file_paths[0]
@@ -1165,10 +1176,6 @@ def import_pdml(file_paths,
             ip_dst = ip_match.group(2)
         except:
             logging.debug('Skipped frame {0}'.format(frame_number))
-            continue
-
-        if ip_src in ips_to_ignore_list or ip_dst in ips_to_ignore_list:
-            logging.debug('Skipped frame {0} (in ignore list)'.format(frame_number))
             continue
 
         gtp_proto = packet.find("proto[@name='gtp']")
@@ -1449,17 +1456,19 @@ def import_pdml(file_paths,
     return output_files
 
 
-def call_wireshark(wireshark_versions, input_file_str, http2ports_string):
+def call_wireshark(wireshark_versions, input_file_str, http2ports_string, mode=None, check_if_exists=False):
     wireshark_versions_list = [e.strip() for e in wireshark_versions.split(',')]
     output_files = []
     for wireshark_version in wireshark_versions_list:
         logging.debug('Preparing call for Wireshark version {0}'.format(wireshark_version))
-        output_file = call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string)
+        output_file = call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string, mode, check_if_exists)
         output_files.append(output_file)
     return output_files
 
 
-def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string):
+def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string, mode=None, check_if_exists=False):
+    logging.debug('Wireshark call for {0}. Version {1}, HTTP/2 ports: {2}'.format(input_file_str, wireshark_version,
+                                                                                  http2ports_string))
     input_files = input_file_str.split(',')
     merged = False
     if len(input_files) > 1:
@@ -1510,6 +1519,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     # tshark_command = '"{0}" -r "{1}" -2 -d tcp.port==8080,http2 -d tcp.port==3000,http2 -Y "(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp" -T pdml -J "http2 ngap pfcp"'.format(tshark_path, input_file)
     # Some port combinations we saw so far from different vendors
     # Maybe as "to do" would be to add it as a command-line option
+    logging.debug('Received HTTP/2 port list: {0}'.format(http2ports_string))
     port_list = http2ports_string.split(',')
 
     tshark_command = [
@@ -1519,36 +1529,65 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         '-2'
     ]
 
-    for port in port_list:
-        tshark_command.append('-d')
-        tshark_command.append('tcp.port=={0},http2'.format(port))
+    # All this only needed if we are decoding 5G CP
+    if mode is None:
+        for port in port_list:
+            tshark_command.append('-d')
+            tshark_command.append('tcp.port=={0},http2'.format(port))
 
-    # Add 5GS null ciphering decode (WS versions >=3)
-    logging.debug('Using Wireshark version {0}'.format(wireshark_version))
+        # Add 5GS null ciphering decode (WS versions >=3)
+        logging.debug('Using Wireshark version {0}'.format(wireshark_version))
 
-    # Assume that a current Wireshark version is installed in the machine
-    if wireshark_version == 'OS' or (version.parse(wireshark_version) >= version.parse('3.0.0')):
-        logging.debug('Wireshark supports nas-5gs.null_decipher option. Applying')
-        tshark_command.append('-o')
-        tshark_command.append('nas-5gs.null_decipher: TRUE')
-    else:
-        logging.debug('Wireshark version <3.0.0. Not applying nas-5gs.null_decipher option. Applying')
+        # Assume that a current Wireshark version is installed in the machine
+        if wireshark_version == 'OS' or (version.parse(wireshark_version) >= version.parse('3.0.0')):
+            logging.debug('Wireshark supports nas-5gs.null_decipher option. Applying')
+            tshark_command.append('-o')
+            tshark_command.append('nas-5gs.null_decipher: TRUE')
+        else:
+            logging.debug('Wireshark version <3.0.0. Not applying nas-5gs.null_decipher option. Applying')
 
     # Added disabling name resolution (see #2). Reference: https://tshark.dev/packetcraft/add_context/name_resolution/
     # Added GTPv2 for N26 messages and TCP to filter out spurious TCP retransmissions
     # Added ICMP because it was observed that sometimes PFCP messages are put into the icmp <proto> tag
-    tshark_command.extend([
-        '-Y',
-        '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp or gtpv2 or diameter or radius or gtpprime or icmp or icmpv6.type == 134',
-        '-T',
-        'pdml',
-        '-J',
-        'http2 ngap pfcp gtpv2 tcp diameter radius gtpprime icmp icmpv6',
-        '-n'
-    ])
+    if mode is None:
+        tshark_command.extend([
+            '-Y',
+            '(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp or gtpv2 or diameter or radius or gtpprime or icmp or icmpv6.type == 134',
+            '-T',
+            'pdml',
+            '-J',
+            'http2 ngap pfcp gtpv2 tcp diameter radius gtpprime icmp icmpv6',
+            '-n'
+        ])
+    elif mode == 'UDP':
+        tshark_command.extend([
+            '-Y',
+            'udp and not gtp',
+            '-T',
+            'pdml',
+            '-J',
+            'ip udp icmp',
+            '-n'
+        ])
+    elif mode == 'GTP':
+        tshark_command.extend([
+            '-Y',
+            'gtp and gtp.message==0xff',
+            '-T',
+            'pdml',
+            '-J',
+            'ip gtp udp icmp',
+            '-n'
+        ])
 
     logging.debug('Generating PDML files from PCAP to {0}'.format(output_file))
     logging.debug(tshark_command)
+
+    if check_if_exists:
+        if os.path.exists(output_file):
+            logging.debug('Output file {0} exists. Skipping tshark call'.format(output_file))
+            return output_file
+
     with open(output_file, "w") as outfile:
         subprocess.run(tshark_command, stdout=outfile)
 
@@ -1580,9 +1619,12 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+
 sbi_regex = re.compile(r'.*/(n.*)(/v\d.*)/(.*)')
 sbi_regex2 = re.compile(r'.*/(n.*)(/v\d.*)/(.*)/(.*)')
 sbiUrlDescription = collections.namedtuple('SbiDescription', 'nf call')
+
+
 def parse_sbi_type_from_url(sbi_url):
     # Examples:
     # POST  /nsmf-pdusession/v1/sm-contexts
@@ -1659,8 +1701,6 @@ if __name__ == '__main__':
                         help='Whether you want to show the message timestamps in the diagram. Default is "False"')
     parser.add_argument('-show_selfmessages', type=str2bool, required=False, default=False,
                         help='Whether you want to show self-messages. You may want to turn this to "True" if you are running a trace on localhost. Default is "False"')
-    parser.add_argument('-exclude_ips', type=str, required=False, default='',
-                        help='IPs you want to exclude from the output diagram')
 
     args = parser.parse_args()
 
@@ -1686,7 +1726,6 @@ if __name__ == '__main__':
     print('Ignore PFCP packet duplicates: {0}'.format(args.ignore_pfcp_duplicate_packets))
     print('Show timestamp in diagram: {0}'.format(args.show_timestamp))
     print('Show self-messages: {0}'.format(args.show_selfmessages))
-    print('Excluded IPs: {0}'.format(args.exclude_ips))
     print()
 
     http2_string_unescape = args.unescapehttp
@@ -1719,9 +1758,7 @@ if __name__ == '__main__':
         args.ignore_spurious_tcp_retransmissions,
         args.ignore_pfcp_duplicate_packets,
         args.show_timestamp,
-        args.show_selfmessages,
-        args.exclude_ips
-    )
+        args.show_selfmessages)
 
     if args.svg:
         print('Converting .puml files to SVG')

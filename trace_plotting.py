@@ -4,6 +4,11 @@ import trace_visualizer
 import logging
 import os.path
 import plotly.graph_objects as go
+import bz2
+import pickle
+import xml.etree.ElementTree as ET
+from lxml import etree
+import collections
 
 
 def parse_k8s_kpis_as_dataframe(filename):
@@ -62,7 +67,7 @@ def import_pcap_as_dataframe(pcap_files, http2_ports, wireshark_version, logging
                 packets_df_list.append(packets_df)
 
         # Consolidated packet list
-        packets_df = pd.concat(packets_df_list)
+        packets_df = pd.concat(packets_df_list, ignore_index=True)
         return packets_df
     except:
         return None
@@ -100,22 +105,25 @@ def datetime_to_str(x):
         return datetime_str
 
 
-def generate_scatterplots_for_wireshark_traces(packets_df, filter_column=None, trace_name='Traffic trace'):
+def generate_scatterplots_for_wireshark_traces(packets_df, filter_column=None, trace_name='Traffic trace', summary_column='summary', timestamp_column='timestamp', datetime_column='datetime', protocol_column='protocol', frame_number_column='frame_number'):
     # Generates a list of scatterplots based on the filtering criteria provided. e.g. if the filtering criteria is
     # 'file', it will generate one scatter plot per 'file' occurrence. If the provided filtering criteria is None, no
     # filter will be used
+    
+    if datetime_column not in packets_df:
+        packets_df[datetime_column] = pd.to_datetime(packets_df[timestamp_column], unit='s')
 
     # Order by summary (y-axis) so that the axis values are nicely ordered without the need to do it by hand
-    packets_df_plot = packets_df[packets_df.summary != ''].sort_values(by=["protocol", "summary"])
+    packets_df_plot = packets_df[packets_df[summary_column] != ''].sort_values(by=[protocol_column, summary_column])
 
     if filter_column is None:
         # Generate one single scatterplot
-        data_text = 'Frame ' + packets_df_plot['frame_number'] + ', ' + packets_df_plot[
-            'datetime'].apply(datetime_to_str)
+        data_text = 'Frame ' + packets_df_plot[frame_number_column] + ', ' + packets_df_plot[
+            datetime_column].apply(datetime_to_str)
 
         # <extra></extra> removes the trace name
-        scatterplot = go.Scatter(x=packets_df_plot['datetime'],
-                                 y=packets_df_plot['summary'],
+        scatterplot = go.Scatter(x=packets_df_plot[datetime_column],
+                                 y=packets_df_plot[summary_column],
                                  mode='markers',
                                  name=trace_name,
                                  showlegend=True,
@@ -130,15 +138,15 @@ def generate_scatterplots_for_wireshark_traces(packets_df, filter_column=None, t
         for trace_file in subplot_criteria:
             packets_df_plot_file = packets_df_plot[packets_df_plot[filter_column] == trace_file]
             if len(subplot_criteria) == 1:
-                data_text = 'Frame ' + packets_df_plot_file['frame_number'] + ', ' + packets_df_plot_file[
-                    'datetime'].apply(datetime_to_str)
+                data_text = 'Frame ' + packets_df_plot_file[frame_number_column] + ', ' + packets_df_plot_file[
+                    datetime_column].apply(datetime_to_str)
             else:
                 data_text = 'Frame ' + packets_df_plot_file['file_idx'].map(str) + '-' + packets_df_plot_file[
-                    'frame_number'] + ', ' + packets_df_plot_file['datetime'].apply(
+                    frame_number_column] + ', ' + packets_df_plot_file[datetime_column].apply(
                     lambda x: x.strftime('%H:%M:%S.%f')[:-3])
             scatterplot = go.Scatter(
-                x=packets_df_plot_file['datetime'],
-                y=packets_df_plot_file['summary'],
+                x=packets_df_plot_file[datetime_column],
+                y=packets_df_plot_file[summary_column],
                 mode='markers',
                 name=trace_file,
                 showlegend=True,
@@ -193,3 +201,114 @@ def generate_scatterplot_for_k8s_kpis(data_to_plot, series_name, show_legend, da
         line={'color': series_color},
         text=data_text,
         hovertemplate = '%{text}: %{y:.2f} CPU')
+
+
+def compressed_pickle(title, data):
+    # Used to compress big DataFrames containing packet captures (hundreds of MBs otherwise)
+    output_file = title + '.pbz2'
+    logging.debug('Saving data to {0}'.format(output_file))
+    with bz2.BZ2File(output_file, 'w') as f:
+        pickle.dump(data, f)
+
+
+def decompress_pickle(file):
+    # Counterpart to the previous function
+    data = bz2.BZ2File(file, 'rb')
+    data = pickle.load(data)
+    return data
+
+
+parser = etree.XMLParser(recover=True)
+ProtoDescription = collections.namedtuple('ProtoDescription',
+                                          'timestamp ip_src, ip_dst, src_port, dst_port, payload, protocol_count frame_num')
+
+
+def extract_proto_info(proto_info):
+    # Wrote a new parse for UP packets
+    # For N3:
+    # [('ip', <Element proto at 0x1aa25606f40>),
+    # ('udp', <Element proto at 0x1aa256069c0>),
+    # ('gtp', <Element proto at 0x1aa255e3040>),
+    # ('ip', <Element proto at 0x1aa255e3100>),
+    # ('udp', <Element proto at 0x1aa255e3180>)]
+
+    # For N6:
+    # [('ip', <Element proto at 0x1aa255e36c0>),
+    # ('udp', <Element proto at 0x1aa255e3c00>)]
+
+    # Excluding geninfo
+    proto_length = len(proto_info) - 1
+
+    gen_info = proto_info[0][1]
+    timestamp = float(gen_info.find("field[@name='timestamp']").attrib['value'])
+    frame_nr = int(gen_info.find("field[@name='num']").attrib['show'])
+
+    if proto_length < 5:
+        # Outer IP header
+        ip_proto = proto_info[1][1]
+        ip_src = ip_proto.find("field[@name='ip.src']").attrib['show']
+        ip_dst = ip_proto.find("field[@name='ip.dst']").attrib['show']
+    else:
+        # Inner IP header
+        ip_proto = proto_info[4][1]
+        ip_src = ip_proto.find("field[@name='ip.src']").attrib['show']
+        ip_dst = ip_proto.find("field[@name='ip.dst']").attrib['show']
+
+    udp_proto = proto_info[-1][1]
+    try:
+        src_port = udp_proto.find("field[@name='udp.srcport']").attrib['show']
+        dst_port = udp_proto.find("field[@name='udp.dstport']").attrib['show']
+        payload = udp_proto.find("field[@name='udp.payload']").attrib['value']
+    except:
+        # Maybe ICMP?
+        src_port = ''
+        dst_port = ''
+        payload = udp_proto.find("field[@name='data']").attrib['value']
+    return (timestamp, ip_src, ip_dst, src_port, dst_port, payload, proto_length, frame_nr)
+
+
+def parse_packet(packet_str):
+    parsed_packet = ET.fromstring(packet_str, parser=parser)
+    protos = [(proto.attrib['name'], proto) for proto in parsed_packet if
+              proto.attrib['name'] in ['geninfo', 'ip', 'udp', 'gtp', 'icmp']]
+    try:
+        parsed_protos = extract_proto_info(protos)
+    except:
+        logging.error('Could not parse frame:\n{0}'.format(packet_str))
+        raise
+    return parsed_protos
+
+
+def read_xml_file_line_basis(xml_file):
+    # This new function reads (potentially) very big PDML files containing packet traces where the focus is User Plane
+    # (UP) with UDP (or ICMP) packets.
+    # It is assumed that in order to measure one-way delay, each UP packet has a unique payload (this function
+    # only reads the packets though).
+    # Tested on my i7-7500U Laptop+SSD I got ca. 2GB PDML/minute parsing performace without much memory consumption
+    # (ET.parse filled up the system memory completely)
+    start_tag = '<packet>'
+    end_tag = '</packet>'
+    start_packet_identified = False
+    captured_line = ''
+    file_size = os.path.getsize(xml_file)
+    file_size = round(file_size / (1024 * 1024.0), 2)
+    packet_list = []
+    logging.debug(f'Opening {xml_file}. Total size: {file_size} MB')
+    with open(xml_file, 'r') as f:
+        logging.debug(f'Opened {xml_file}')
+        for line in f:  # 6
+            if start_tag in line:
+                start_packet_identified = True
+            if start_packet_identified:
+                captured_line += line
+            if end_tag in line:
+                captured_line += line
+                start_packet_identified = False
+                parsed_packet = parse_packet(captured_line)
+                captured_line = ''
+                packet_list.append(parsed_packet)
+
+    df = pd.DataFrame(packet_list,
+                      columns=['timestamp', 'ip.src', 'ip.dst', 'udp.srcport', 'udp.dstport', 'udp.payload',
+                               'protocol_count', 'frame_nr'])
+    return df
