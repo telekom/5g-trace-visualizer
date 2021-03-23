@@ -4,6 +4,7 @@
   * [Summary](#summary)
   * [Requirements](#requirements)
   * [Application structure](#application-structure)
+  * [Plotting Scripts](#plotting-scripts)
   * [Examples](#examples)
     * [Help](#help)
     * [Wireshark Portable](#wireshark-portable)
@@ -55,6 +56,36 @@ example run command - ``python3 trace_visualizer.py -wireshark "OS" ./doc/free5g
 The figure below summarizes what this small application does ([SVG](doc/summary.svg), [PNG](doc/summary.png), [Mermaid](doc/summary.mermaid))
 
 ![Application structure](doc/summary.png)
+
+## Plotting Scripts
+
+You will notice several ``plotting_xxx.ipynb`` files.
+
+These are [iPython](https://ipython.org/) scripts that make use of the implemented functionality to generate nice, interactive plots vbased on
+data from 5G traces.
+
+In order to run the scripts you will need:
+* [Jupyter Lab](https://jupyter.org/) (I use [Anaconda](https://www.anaconda.com/) and that is what I will assume was 
+  installed for the sake of documentation)
+* Install NodeJS: ``conda install nodejs``.
+* [Plotly](https://plotly.com/): used for plotting. In order to install it, you can follow the instructions 
+  [here](https://plotly.com/python/getting-started/#jupyterlab-support).
+  
+The following scripts are included:
+
+### Spirent Result Files
+
+For those of you using Spirent for testing, you may need to quickly compare certain parameters 
+(e.g. ``Basic Data Message One Way Trip Delay (micro-sec)``).
+
+The way Spirent stores test results is by means of an Excel file named ``<date>_RID-<test number>__<test name>.xls``.
+You can use this script to scan a folder containing such Excel files and load data from each of them in a table you can
+use for comparing test runs.
+
+Currently, the script only imports parameters from the ``L5-7 Client|Basic`` worksheet but can be easily extended.
+An example is provided to plot a comparison bar chart of the one-way delay for each test.
+
+For obvious reasons, no example files are provided.
 
 ## Examples
 
