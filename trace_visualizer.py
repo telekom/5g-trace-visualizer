@@ -29,6 +29,8 @@ import yaml_parser
 application_logger = logging.getLogger()
 application_logger.setLevel(logging.DEBUG)
 
+wireshark_folder = 'wireshark'
+
 ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
 debug = False
@@ -1459,11 +1461,49 @@ def import_pdml(file_paths,
 def call_wireshark(wireshark_versions, input_file_str, http2ports_string, mode=None, check_if_exists=False):
     wireshark_versions_list = [e.strip() for e in wireshark_versions.split(',')]
     output_files = []
+    successful_wireshark_call = False
     for wireshark_version in wireshark_versions_list:
+        if wireshark_version == 'latest':
+            wireshark_version = get_wireshark_portable_last_version()
+            if wireshark_version is None:
+                logging.error('Could not find wireshark version(s) in {0} folder'.format(wireshark_folder))
+                continue
+            else:
+                logging.info('Using latest version found: {0}'.format(wireshark_version))
+
         logging.debug('Preparing call for Wireshark version {0}'.format(wireshark_version))
         output_file = call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string, mode, check_if_exists)
         output_files.append(output_file)
+        successful_wireshark_call = True
+
+    if not successful_wireshark_call:
+        logging.error(
+            'Could not successfully call Wireshark to parse files. Input parameters: version={0}; input file(s)={1}; HTTP/2 ports={2}'
+               .format(wireshark_versions, input_file_str, http2ports_string))
+        exit(1)
     return output_files
+
+
+def get_wireshark_portable_last_version():
+    try:
+        found_versions = [(version.parse(e.group(1)), e.group(1)) for e in [re.search(r'WiresharkPortable_(.*)', e) for e in os.listdir(wireshark_folder) if os.path.isdir(os.path.join(wireshark_folder, e))] if e is not None]
+        found_versions.sort(reverse=True, key=lambda x: x[0])
+        last_Version = found_versions[0][1]
+        logging.debug('Wireshark last version found: {0}'.format(last_Version))
+        return last_Version
+    except:
+        logging.error('Could not parse Wireshark versions from folder')
+        traceback.print_exc()
+    return None
+
+
+def get_wireshark_portable_folder(wireshark_version):
+    return os.path.join(os.path.dirname(
+        os.path.realpath(__file__)),
+        wireshark_folder,
+        'WiresharkPortable_{0}'.format(wireshark_version),
+        'App',
+        'Wireshark')
 
 
 def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string, mode=None, check_if_exists=False):
@@ -1474,9 +1514,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     if len(input_files) > 1:
         filename, file_extension = os.path.splitext(input_files[0])
         output_filename = '{0}_{2}_merged{1}'.format(filename, file_extension, wireshark_version)
-        mergecap_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark',
-                                                 'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark',
-                                                 'mergecap')
+        mergecap_path = os.path.join(get_wireshark_portable_folder(wireshark_version), 'mergecap')
         mergecap_command = [
             mergecap_path,
             '-w',
@@ -1499,16 +1537,13 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     # Add option to not use a Wireshark portable version but rather the OS-installed one
     if wireshark_version == 'OS':
-        tshark_path = file_name = os.path.join('tshark')
+        tshark_path = os.path.join('tshark')
     else:
-        tshark_path = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark',
-                                               'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark',
-                                               'tshark')
+        tshark_path = os.path.join(get_wireshark_portable_folder(wireshark_version), 'tshark')
     logging.debug('tshark path: {0}'.format(tshark_path))
 
     # Add folder check to make more understandable error messages
-    tshark_folder = file_name = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'wireshark',
-                                             'WiresharkPortable_{0}'.format(wireshark_version), 'App', 'Wireshark')
+    tshark_folder = get_wireshark_portable_folder(wireshark_version)
     if not os.path.isdir(tshark_folder):
         raise FileNotFoundError('Could not find tshark on path {0}'.format(tshark_path))
 
@@ -1516,6 +1551,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         output_file = '{0}_{1}.pdml'.format(filename, wireshark_version)
     else:
         output_file = '{0}.pdml'.format(filename)
+
     # tshark_command = '"{0}" -r "{1}" -2 -d tcp.port==8080,http2 -d tcp.port==3000,http2 -Y "(http2 and (http2.type == 0 || http2.type == 1)) or ngap or nas-5gs or pfcp" -T pdml -J "http2 ngap pfcp"'.format(tshark_path, input_file)
     # Some port combinations we saw so far from different vendors
     # Maybe as "to do" would be to add it as a command-line option
@@ -1588,6 +1624,12 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
             logging.debug('Output file {0} exists. Skipping tshark call'.format(output_file))
             return output_file
 
+    # Check if input file exists. If not, abort
+    if not os.path.exists(input_file):
+        logging.error('Could not find input file {0}, exiting'.format(input_file))
+        exit(1)
+
+    # Write PDML file
     with open(output_file, "w") as outfile:
         subprocess.run(tshark_command, stdout=outfile)
 
@@ -1677,7 +1719,7 @@ if __name__ == '__main__':
     parser.add_argument('-ignore_spurious_tcp_retransmissions', type=str2bool, required=False, default=True,
                         help='Whether to ignore HTTP/2 packets marked by Wireshark as spurious TCP retransmissions. Default is "True"')
     parser.add_argument('-wireshark', type=str, required=False, default='none',
-                        help="If other that 'none' (default), specifies a Wireshark portable version (or list of versions) to be used to decode the input file if that file is a not a PDML file. If more than one version specified, the first one will be used as main version. Other versions will be used as alternatives in case Wireshark reports a malformed packet. 'OS' can be used as version number if you do not want to use a specific Wireshark version but rather the OS-installed Wireshark/tshark version you have within your PATH")
+                        help="If other that 'none' (default), specifies a Wireshark portable version (or list of versions) to be used to decode the input file if that file is a not a PDML file. If more than one version specified, the first one will be used as main version. Other versions will be used as alternatives in case Wireshark reports a malformed packet. 'OS' can be used as version number if you do not want to use a specific Wireshark version but rather the OS-installed Wireshark/tshark version you have within your PATH. If you want to use the latest Wireshark portable version that can be found, use 'latest' as option")
     parser.add_argument('-http2ports', type=str, required=False,
                         default='32445,5002,5000,32665,80,32077,5006,8080,3000',
                         help="Comma-separated list (no spaces) of port numbers that are to be decoded as HTTP/2 by the Wireshark dissectors. Only applied for non-PDML inputs")

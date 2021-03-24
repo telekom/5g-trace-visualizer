@@ -43,7 +43,7 @@ It was born from the need to automatically convert 5G traces into something read
 We could not find a commercial tool doing exactly what we needed. While [PlantUML](http://plantuml.com/) can generate nice diagrams, doing those manually requires too much time. So we resorted to putting together this script.
 
 ## Requirements
-* You need to have Java installed (executing the ``java`` command must launch Java). this is required because PlantUML runs on Java
+* You need to have Java installed (executing the ``java`` command must launch Java). This is required because PlantUML runs on Java
 * ``plantuml.jar`` must be placed in the base directory (see [``place plantuml.jar here.txt``](place plantuml.jar here.txt)). This application was tested with the 2019.11 version (Apache Software License Version) of ``plantuml.jar``. You can find it [here](http://sourceforge.net/projects/plantuml/files/plantuml-jar-asl-1.2019.12.zip/download).
 * Wireshark portable of the desired versions placed in the ``/wireshark`` folder. See [instructions in folder](/wireshark/Readme.md).
 
@@ -178,6 +178,7 @@ Run ``python trace_visualizer.py --help`` for a list of all available parameters
 The ``-wireshark`` option lets you use a specific Wireshark version. The way this works is by using this parameter to generate the path for the ``tshark`` and ,if more than one trace is specified, ``mergecap``, call. It is a scripted command, nothing more:
 * ``OS``: no absolute path for ``tshark`` is generated. That is, the ``tshark`` from the OS's path will be used
 * ``<version number>``: an absolute path location for the ``tshark`` executable is generated. The executable is assumed to be located in the following location: ``wireshark/WiresharkPortable_<version number>``.
+* ``latest``: similar to the previous option, this option scans the ``wireshark`` folder and out of all of the found folders chooses the one with the highest version number. 
 
 Example: [WiresharkPortable version 3.4.4](https://1.eu.dl.wireshark.org/win32/WiresharkPortable_3.4.4.paf.exe) should be placed in a directory named ``WiresharkPortable_3.4.4``.
 
