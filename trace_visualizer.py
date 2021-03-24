@@ -194,6 +194,13 @@ def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_dup
 
 
 def parse_nas_proto(frame_number, el, multipart_proto=False):
+    if not isinstance(el, list):
+        return parse_nas_proto_el(frame_number, el, multipart_proto)
+
+    all_json = [parse_nas_proto_el(frame_number, e, multipart_proto) for e in el]
+    return '\n'.join(all_json)
+
+def parse_nas_proto_el(frame_number, el, multipart_proto=False):
     if not multipart_proto:
         ngap_pdu = el.find("field[@name='ngap.NGAP_PDU']")
     else:
@@ -1197,7 +1204,13 @@ def import_pdml(file_paths,
                 pass
 
         # For 5GC
-        ngap_proto = packet.find("proto[@name='ngap']")
+        # Fix case (see free5GC trace) where there are several elements (not correct but well...)
+        ngap_proto = packet.findall("proto[@name='ngap']")
+        if len(ngap_proto) == 0:
+            ngap_proto = None
+        elif len(ngap_proto) == 1:
+            ngap_proto = ngap_proto[0]
+
         http2_proto = packet.find("proto[@name='http2']")
 
         # We found one trace where the PFCP protocol was signaled as ICMP, which messed with the trace

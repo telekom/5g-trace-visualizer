@@ -9,7 +9,8 @@ import pickle
 import xml.etree.ElementTree as ET
 from lxml import etree
 import collections
-
+import numpy as np
+import re
 
 def parse_k8s_kpis_as_dataframe(filename):
     # Parses a KPI file consisting of several lines of raw KPIs as output by the following kubectl command
@@ -105,7 +106,17 @@ def datetime_to_str(x):
         return datetime_str
 
 
-def generate_scatterplots_for_wireshark_traces(packets_df, filter_column=None, trace_name='Traffic trace', summary_column='summary', timestamp_column='timestamp', datetime_column='datetime', protocol_column='protocol', frame_number_column='frame_number'):
+def generate_scatterplots_for_wireshark_traces(
+        packets_df,
+        filter_column=None,
+        trace_name='Traffic trace',
+        summary_column='summary',
+        timestamp_column='timestamp',
+        datetime_column='datetime',
+        protocol_column='protocol',
+        frame_number_column='frame_number',
+        auto_color=False,
+        y_unit=''):
     # Generates a list of scatterplots based on the filtering criteria provided. e.g. if the filtering criteria is
     # 'file', it will generate one scatter plot per 'file' occurrence. If the provided filtering criteria is None, no
     # filter will be used
@@ -127,9 +138,10 @@ def generate_scatterplots_for_wireshark_traces(packets_df, filter_column=None, t
                                  mode='markers',
                                  name=trace_name,
                                  showlegend=True,
-                                 line={'color': 'gray'},
                                  text=data_text,
-                                 hovertemplate='%{text}, %{y}<extra></extra>')
+                                 hovertemplate='%{text}, %{y}' + y_unit + '<extra></extra>')
+        if not auto_color:
+            scatterplot['line'] = {'color': 'gray'}
         return scatterplot
     else:
         # Multiple scatterplots
@@ -141,7 +153,11 @@ def generate_scatterplots_for_wireshark_traces(packets_df, filter_column=None, t
                 data_text = 'Frame ' + packets_df_plot_file[frame_number_column] + ', ' + packets_df_plot_file[
                     datetime_column].apply(datetime_to_str)
             else:
-                data_text = 'Frame ' + packets_df_plot_file['file_idx'].map(str) + '-' + packets_df_plot_file[
+                if 'file_idx' in packets_df_plot_file:
+                    file_str = packets_df_plot_file['file_idx'].map(str) + '-'
+                else:
+                    file_str = ''
+                data_text = 'Frame ' + file_str + packets_df_plot_file[
                     frame_number_column] + ', ' + packets_df_plot_file[datetime_column].apply(
                     lambda x: x.strftime('%H:%M:%S.%f')[:-3])
             scatterplot = go.Scatter(
@@ -150,9 +166,10 @@ def generate_scatterplots_for_wireshark_traces(packets_df, filter_column=None, t
                 mode='markers',
                 name=trace_file,
                 showlegend=True,
-                line={'color': 'gray'},
                 text=data_text,
-                hovertemplate='%{text}, %{y}<extra></extra>')
+                hovertemplate='%{text}, %{y}' + y_unit + '<extra></extra>')
+            if not auto_color:
+                scatterplot['line'] = {'color': 'gray'}
             scatterplots.append(scatterplot)
         return scatterplots
 
@@ -312,3 +329,101 @@ def read_xml_file_line_basis(xml_file):
                       columns=['timestamp', 'ip.src', 'ip.dst', 'udp.srcport', 'udp.dstport', 'udp.payload',
                                'protocol_count', 'frame_nr'])
     return df
+
+
+def calculate_procedure_length(packets_df):
+    registration_or_pdu_session = packets_df[
+        ((packets_df['summary'] == 'NAS Registration request (0x41)') & (
+            ~packets_df['msg_description'].str.contains(r'Security mode complete \(0x5e\)'))) |
+        (packets_df['summary'] == 'NAS Registration accept (0x42)') |
+        (packets_df['summary'] == 'NAS PDU session establishment request (0xc1)') |
+        (packets_df['summary'] == 'NAS PDU session establishment accept (0xc2)')
+        ].copy()
+
+    registration_or_pdu_session['AMF-UE-NGAP-ID'] = ''
+    registration_or_pdu_session['RAN-UE-NGAP-ID'] = ''
+
+    def get_id(regex, x):
+        try:
+            match = re.search(regex, x)
+            if match is None:
+                return ''
+
+            return match.group(1)
+        except:
+            return ''
+
+    registration_or_pdu_session['AMF-UE-NGAP-ID'] = registration_or_pdu_session['msg_description'].apply(
+        lambda x: get_id(r"'AMF-UE-NGAP-ID: ([\d]+)'", x))
+    registration_or_pdu_session['RAN-UE-NGAP-ID'] = registration_or_pdu_session['msg_description'].apply(
+        lambda x: get_id(r"'RAN-UE-NGAP-ID: ([\d]+)'", x))
+
+    unique_ran_ids = registration_or_pdu_session['RAN-UE-NGAP-ID'].unique()
+
+    logging.debug('Found RAN-UE-NGAP-IDs: {0}'.format(len(unique_ran_ids)))
+
+    procedures = []
+    ProcedureDescription = collections.namedtuple(
+        'ProcedureDescription',
+        'name RAN_UE_NGAP_ID length_ms start_frame end_frame start_timestamp end_timestamp start_datetime end_datetime')
+
+    logging.debug('Parsing procedures based on RAN_UE_NGAP_ID')
+    for ran_id in unique_ran_ids:
+        current_reg_start = 0
+        current_reg_start_frame = 0
+        current_reg_start_datetime = ''
+        current_pdu_session_establishment_start = 0
+        current_pdu_session_establishment_start_frame = 0
+        current_pdu_session_establishment_start_datetime = ''
+        rows = registration_or_pdu_session[registration_or_pdu_session['RAN-UE-NGAP-ID'] == ran_id]
+        # display(rows)
+        for row in rows.itertuples():
+            if row.summary == 'NAS Registration request (0x41)':
+                current_reg_start = row.timestamp
+                current_reg_start_frame = row.frame_number
+                current_reg_start_datetime = row.datetime
+            elif row.summary == 'NAS PDU session establishment request (0xc1)':
+                current_pdu_session_establishment_start = row.timestamp
+                current_pdu_session_establishment_start_frame = row.frame_number
+                current_pdu_session_establishment_start_datetime = row.datetime
+            elif row.summary == 'NAS Registration accept (0x42)':
+                procedure_time = (row.timestamp - current_reg_start) * 1000
+                procedures.append(
+                    ProcedureDescription('UE Registration', ran_id,
+                                         procedure_time,
+                                         current_reg_start_frame,
+                                         row.frame_number,
+                                         current_reg_start, row.timestamp,
+                                         current_reg_start_datetime, row.datetime))
+            elif row.summary == 'NAS PDU session establishment accept (0xc2)':
+                procedure_time = (row.timestamp - current_pdu_session_establishment_start) * 1000
+                procedures.append(ProcedureDescription('PDU Session Establishment', ran_id,
+                                                       procedure_time,
+                                                       current_pdu_session_establishment_start_frame,
+                                                       row.frame_number,
+                                                       current_pdu_session_establishment_start, row.timestamp,
+                                                       current_pdu_session_establishment_start_datetime, row.datetime))
+    procedure_df = pd.DataFrame(procedures, columns=['name', 'RAN_UE_NGAP_ID', 'length_ms', 'start_frame', 'end_frame',
+                                                     'start_timestamp', 'end_timestamp',
+                                                     'start_datetime', 'end_datetime'])
+
+    logging.debug('Parsed {0} procedures'.format(len(procedure_df)))
+    return procedure_df
+
+
+def get_histogram_data(x, bin_size, min_x=0, density=True, remove_trailing_zeros=False):
+    bins = range(min_x, int(x.max()) + 5*bin_size, bin_size)
+    hist_array, hist_bins = np.histogram(x, bins=bins, density=density)
+
+    # Remove trailing zeros
+    if remove_trailing_zeros:
+        i = 0
+        while hist_array[i] == 0:
+            i += 1
+
+        hist_array = hist_array[i:]
+        hist_bins = hist_bins[i:]
+
+    return hist_array, hist_bins
+
+

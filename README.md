@@ -10,6 +10,7 @@
     * [Plotting 5GC messages and k8s load](#plotting-5gc-messages-and-k8s-load)
     * [Plotting User Plane latency](#plotting-user-plane-latency)
     * [Comparing User Plane latency](#comparing-user-plane-latency)
+    * [Procedure Time](#procedure-time)
   * [Examples](#examples)
     * [Help](#help)
     * [Wireshark Portable](#wireshark-portable)
@@ -167,6 +168,20 @@ Result based on the example data included
 
 HTML version (interactive): [latency_comparison.html](doc/latency_comparison.html)
 
+### Procedure Time
+
+File: [``plotting_procedure_time.ipynb``](plotting_procedure_time.ipynb)
+
+Takes as input a CP trace and plots procedure duration:
+  * Distribution of procedure time
+    ![Procedure length histogram](doc/free5gc_procedure_length.png)
+    [HTML version](doc/free5gc_procedure_length.html)
+  * Occurrence over time
+    ![Procedure timeline with length](doc/free5gc_procedure_timeline.png)
+    [HTML version](doc/free5gc_procedure_timeline.html)
+    
+Note: a limited set of procedures are supported for now. More may be supported over time.
+
 ## Examples
 
 ### Help
@@ -258,12 +273,12 @@ Do note that this will only give you a useful output if you time-synchronized th
 
 Just use the ``-http2ports`` ports parameters. E.g. ``-http2ports "3000,80"`` tells Wireshark to decode communication on those ports as HTTP/2. Useful if you are using non-standard ports for your communication.
 
-Let us try running ``python trace_visualizer.py -wireshark 3.2.2 "<path_to_trace>\free5gc.pcap"``
+Let us try running ``python trace_visualizer.py -wireshark latest "doc/free5gc.pcap"``
 
 We obtain the following trace diagram:
 ![free5GC plain](doc/examples/free5gc_3.2.2_plain.PNG)
 
-SVG full diagram [here](doc/examples/free5gc_3.2.2_plain.svg)
+SVG full diagram [here](doc/examples/free5gc_3.4.4.svg)
 
 There seems to be some things missing. That is because the SBI communication will run on varying ports depending on the configuration/deployment. While some ports are used by default, those may not be the ones your deployment are using.
 
