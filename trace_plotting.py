@@ -34,7 +34,7 @@ def parse_k8s_kpis_as_dataframe(filename):
     return data_to_plot
 
 
-def import_pcap_as_dataframe(pcap_files, http2_ports, wireshark_version, logging_level=logging.INFO):
+def import_pcap_as_dataframe(pcap_files, http2_ports, wireshark_version, logging_level=logging.INFO, remove_pdml=False):
     # Imports one or more pcap files as a dataframe with the packet parsing implemented in the trace_visualizer code
 
     # Accept either a single path or a list or paths
@@ -66,6 +66,10 @@ def import_pcap_as_dataframe(pcap_files, http2_ports, wireshark_version, logging
                 packets_df['file'] = file
                 packets_df['file_idx'] = idx
                 packets_df_list.append(packets_df)
+                if remove_pdml:
+                    logging.debug('Removing file(s) {0}'.format(', '.join(pdml_file)))
+                    for e in pdml_file:
+                        os.remove(e)
 
         # Consolidated packet list
         packets_df = pd.concat(packets_df_list, ignore_index=True)
@@ -86,11 +90,12 @@ def _generate_summary_row(x):
     elif protocol == 'PFCP':
         summary = summary_raw.split('\\n')[-1].strip()
     elif protocol == 'HTTP/2':
-        sbi_url_description = trace_visualizer.parse_sbi_type_from_url(summary_raw)
-        if sbi_url_description is None:
+        sbi_url_descriptions = trace_visualizer.parse_sbi_type_from_url(summary_raw)
+        if sbi_url_descriptions is None:
             summary = ''
         else:
-            summary = '{0}, {1}'.format(sbi_url_description.nf.capitalize(), sbi_url_description.call)
+            for sbi_url_description in sbi_url_descriptions:
+                summary = '{0} {1}'.format(sbi_url_description.method, sbi_url_description.call)
         # print('{0}->{1}'.format(summary_raw, summary))
     else:
         summary = ''
@@ -116,7 +121,9 @@ def generate_scatterplots_for_wireshark_traces(
         protocol_column='protocol',
         frame_number_column='frame_number',
         auto_color=False,
-        y_unit=''):
+        y_unit='',
+        hide_series=True,
+        opacity=1):
     # Generates a list of scatterplots based on the filtering criteria provided. e.g. if the filtering criteria is
     # 'file', it will generate one scatter plot per 'file' occurrence. If the provided filtering criteria is None, no
     # filter will be used
@@ -127,19 +134,24 @@ def generate_scatterplots_for_wireshark_traces(
     # Order by summary (y-axis) so that the axis values are nicely ordered without the need to do it by hand
     packets_df_plot = packets_df[packets_df[summary_column] != ''].sort_values(by=[protocol_column, summary_column])
 
+    # <extra></extra> removes the trace name
+    hovertemplate = '%{text}, %{y}' + y_unit
+    if hide_series:
+        hovertemplate = hovertemplate + '<extra></extra>'
+
     if filter_column is None:
         # Generate one single scatterplot
         data_text = 'Frame ' + packets_df_plot[frame_number_column] + ', ' + packets_df_plot[
             datetime_column].apply(datetime_to_str)
-
-        # <extra></extra> removes the trace name
         scatterplot = go.Scatter(x=packets_df_plot[datetime_column],
                                  y=packets_df_plot[summary_column],
                                  mode='markers',
                                  name=trace_name,
                                  showlegend=True,
                                  text=data_text,
-                                 hovertemplate='%{text}, %{y}' + y_unit + '<extra></extra>')
+                                 hovertemplate=hovertemplate,
+                                 opacity=opacity
+                                 )
         if not auto_color:
             scatterplot['line'] = {'color': 'gray'}
         return scatterplot
@@ -167,7 +179,9 @@ def generate_scatterplots_for_wireshark_traces(
                 name=trace_file,
                 showlegend=True,
                 text=data_text,
-                hovertemplate='%{text}, %{y}' + y_unit + '<extra></extra>')
+                hovertemplate=hovertemplate,
+                opacity=opacity
+            )
             if not auto_color:
                 scatterplot['line'] = {'color': 'gray'}
             scatterplots.append(scatterplot)
@@ -332,33 +346,51 @@ def read_xml_file_line_basis(xml_file):
 
 
 def calculate_procedure_length(packets_df):
-    registration_or_pdu_session = packets_df[
+    procedure_frames = packets_df[
         ((packets_df['summary'] == 'NAS Registration request (0x41)') & (
             ~packets_df['msg_description'].str.contains(r'Security mode complete \(0x5e\)'))) |
         (packets_df['summary'] == 'NAS Registration accept (0x42)') |
         (packets_df['summary'] == 'NAS PDU session establishment request (0xc1)') |
-        (packets_df['summary'] == 'NAS PDU session establishment accept (0xc2)')
+        (packets_df['summary'] == 'NAS PDU session establishment accept (0xc2)') |
+        (packets_df['summary_raw'].str.contains('HTTP/2'))
         ].copy()
 
-    registration_or_pdu_session['AMF-UE-NGAP-ID'] = ''
-    registration_or_pdu_session['RAN-UE-NGAP-ID'] = ''
+    procedure_frames['AMF-UE-NGAP-ID'] = ''
+    procedure_frames['RAN-UE-NGAP-ID'] = ''
+    procedure_frames['HTTP_STREAM'] = ''
+    procedure_frames['HTTP_PROCEDURE'] = ''
+    procedure_frames['HTTP_TYPE'] = ''
 
-    def get_id(regex, x):
+    def get_id(regex, x, find_all=False):
         try:
-            match = re.search(regex, x)
-            if match is None:
-                return ''
-
-            return match.group(1)
+            if not find_all:
+                match = re.search(regex, x)
+                if match is None:
+                    return ''
+                return match.group(1)
+            else:
+                match = list(re.finditer(regex, x))
+                if len(match) == 0:
+                    return ''
+                matches = [e for e in match if e is not None]
+                matches = [e.group(1) for e in matches]
+                matches = '\n'.join(matches)
+            return matches
         except:
             return ''
 
-    registration_or_pdu_session['AMF-UE-NGAP-ID'] = registration_or_pdu_session['msg_description'].apply(
+    procedure_frames['AMF-UE-NGAP-ID'] = procedure_frames['msg_description'].apply(
         lambda x: get_id(r"'AMF-UE-NGAP-ID: ([\d]+)'", x))
-    registration_or_pdu_session['RAN-UE-NGAP-ID'] = registration_or_pdu_session['msg_description'].apply(
+    procedure_frames['RAN-UE-NGAP-ID'] = procedure_frames['msg_description'].apply(
         lambda x: get_id(r"'RAN-UE-NGAP-ID: ([\d]+)'", x))
+    procedure_frames['HTTP_STREAM'] = procedure_frames['msg_description'].apply(
+        lambda x: get_id(r"HTTP/2 stream: ([\d]+)", x, find_all=True))
+    procedure_frames['HTTP_PROCEDURE'] = procedure_frames['msg_description'].apply(
+        lambda x: get_id(r":path: (.*)", x, find_all=True))
+    procedure_frames['HTTP_TYPE'] = procedure_frames['summary_raw'].apply(
+        lambda x: get_id(r"HTTP/2.*(req|rsp)", x))
 
-    unique_ran_ids = registration_or_pdu_session['RAN-UE-NGAP-ID'].unique()
+    unique_ran_ids = procedure_frames['RAN-UE-NGAP-ID'].unique()
 
     logging.debug('Found RAN-UE-NGAP-IDs: {0}'.format(len(unique_ran_ids)))
 
@@ -368,6 +400,28 @@ def calculate_procedure_length(packets_df):
         'name RAN_UE_NGAP_ID length_ms start_frame end_frame start_timestamp end_timestamp start_datetime end_datetime')
 
     logging.debug('Parsing procedures based on RAN_UE_NGAP_ID')
+
+    def row_to_id(row, procedure='', reverse=False, index_for_multi_messages=None):
+        if not reverse:
+            src = row.ip_src
+            dst = row.ip_dst
+        else:
+            dst = row.ip_src
+            src = row.ip_dst
+        http_stream = row.HTTP_STREAM
+        if index_for_multi_messages is not None:
+            try:
+                http_stream = row.HTTP_STREAM.split('\n')[index_for_multi_messages]
+            except:
+                logging.error('Could not extract HTTP_STREAM index {0} from row {1}', index_for_multi_messages, row)
+                pass
+        return '{0}-{1}-{2}-'.format(
+            src,
+            dst,
+            http_stream,
+            procedure
+        )
+
     for ran_id in unique_ran_ids:
         current_reg_start = 0
         current_reg_start_frame = 0
@@ -375,7 +429,9 @@ def calculate_procedure_length(packets_df):
         current_pdu_session_establishment_start = 0
         current_pdu_session_establishment_start_frame = 0
         current_pdu_session_establishment_start_datetime = ''
-        rows = registration_or_pdu_session[registration_or_pdu_session['RAN-UE-NGAP-ID'] == ran_id]
+        rows = procedure_frames[procedure_frames['RAN-UE-NGAP-ID'] == ran_id]
+        current_proc_starts = {}
+
         # display(rows)
         for row in rows.itertuples():
             if row.summary == 'NAS Registration request (0x41)':
@@ -386,10 +442,14 @@ def calculate_procedure_length(packets_df):
                 current_pdu_session_establishment_start = row.timestamp
                 current_pdu_session_establishment_start_frame = row.frame_number
                 current_pdu_session_establishment_start_datetime = row.datetime
+            elif row.HTTP_TYPE == 'req':
+                # Check if this is a multi-messages HTTP/2
+                for idx, summary in enumerate(row.summary.split('\n')):
+                    current_proc_starts[row_to_id(row, idx)] = (row.timestamp, row.frame_number, row.datetime, summary)
             elif row.summary == 'NAS Registration accept (0x42)':
                 procedure_time = (row.timestamp - current_reg_start) * 1000
                 procedures.append(
-                    ProcedureDescription('UE Registration', ran_id,
+                    ProcedureDescription('NAS UE Registration', ran_id,
                                          procedure_time,
                                          current_reg_start_frame,
                                          row.frame_number,
@@ -397,21 +457,38 @@ def calculate_procedure_length(packets_df):
                                          current_reg_start_datetime, row.datetime))
             elif row.summary == 'NAS PDU session establishment accept (0xc2)':
                 procedure_time = (row.timestamp - current_pdu_session_establishment_start) * 1000
-                procedures.append(ProcedureDescription('PDU Session Establishment', ran_id,
-                                                       procedure_time,
-                                                       current_pdu_session_establishment_start_frame,
-                                                       row.frame_number,
-                                                       current_pdu_session_establishment_start, row.timestamp,
-                                                       current_pdu_session_establishment_start_datetime, row.datetime))
+                procedures.append(ProcedureDescription(
+                    'NAS PDU Session Establishment', ran_id,
+                    procedure_time,
+                    current_pdu_session_establishment_start_frame,
+                    row.frame_number,
+                    current_pdu_session_establishment_start, row.timestamp,
+                    current_pdu_session_establishment_start_datetime, row.datetime))
+            elif row.HTTP_TYPE == 'rsp':
+                key = row_to_id(row, reverse=True)
+                if key in current_proc_starts:
+                    start = current_proc_starts[key]
+                    procedure_time = (row.timestamp - start[0]) * 1000
+                    procedures.append(ProcedureDescription(
+                        'HTTP ' + start[3], ran_id,
+                        procedure_time,
+                        start[1], row.frame_number,
+                        start[0], row.timestamp,
+                        start[2], row.datetime))
+                    current_proc_starts.pop(key)
+
     procedure_df = pd.DataFrame(procedures, columns=['name', 'RAN_UE_NGAP_ID', 'length_ms', 'start_frame', 'end_frame',
                                                      'start_timestamp', 'end_timestamp',
                                                      'start_datetime', 'end_datetime'])
 
     logging.debug('Parsed {0} procedures'.format(len(procedure_df)))
-    return procedure_df
+    return procedure_df, procedure_frames
 
 
-def get_histogram_data(x, bin_size, min_x=0, density=True, remove_trailing_zeros=False):
+def get_histogram_data(x, bin_size, min_x=0, density=True, remove_trailing_zeros=False, output_labels=False, label_unit=''):
+    # Filter out NaNs
+    x = x[x.notnull()]
+
     bins = range(min_x, int(x.max()) + 5*bin_size, bin_size)
     hist_array, hist_bins = np.histogram(x, bins=bins, density=density)
 
@@ -424,6 +501,9 @@ def get_histogram_data(x, bin_size, min_x=0, density=True, remove_trailing_zeros
         hist_array = hist_array[i:]
         hist_bins = hist_bins[i:]
 
-    return hist_array, hist_bins
+    if not output_labels:
+        return hist_array, hist_bins
 
+    hist_labels = ['{0} to {1}{2}'.format(int(max(e-bin_size/2, x.min())), int(e+bin_size/2), label_unit) for e in hist_bins]
+    return hist_array, hist_bins, hist_labels
 

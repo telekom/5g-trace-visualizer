@@ -1675,12 +1675,13 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
-sbi_regex = re.compile(r'.*/(n.*)(/v\d.*)/(.*)')
-sbi_regex2 = re.compile(r'.*/(n.*)(/v\d.*)/(.*)/(.*)')
-sbiUrlDescription = collections.namedtuple('SbiDescription', 'nf call')
+sbiUrlDescription = collections.namedtuple('SbiDescription', 'method call')
+sbi_regex = re.compile(r'(?P<protocol>HTTP/2)?[ ]*([\w\.]+[\\n]+)?[ ]*(?P<method>POST|GET|PATCH|DELETE|PUT)?[ ]*(?P<url>/.*)')
+imsi_cleaner = re.compile(r'imsi-[\d]+')
+pdu_session_id_cleaner = re.compile(r'/[\d]+')
+multiple_slash_cleaner = re.compile(r'/[/]+')
 
-
-def parse_sbi_type_from_url(sbi_url):
+def parse_sbi_type_from_url(sbi_str):
     # Examples:
     # POST  /nsmf-pdusession/v1/sm-contexts
     # GET  /nudm-sdm/v1/imsi-234100000000000/sm-data
@@ -1688,19 +1689,40 @@ def parse_sbi_type_from_url(sbi_url):
     # POST  /nudm-sdm/v1/imsi-234100000000000/sdm-subscriptions
     # HTTP/2 req.\\nDELETE  /nudm-uecm/v1/imsi-234100000000000/registrations/smf-registrations/6
     # HTTP/2 req.\\nPOST  /nsmf-pdusession/v1/sm-contexts
-    match = sbi_regex.match(sbi_url)
+    # HTTP/2 req.\\nPUT  /nausf-auth/v1/ue-authentications/0/5g-aka-confirmation
+    match = sbi_regex.match(sbi_str)
     if match is None:
         return None
-    nf = match.group(1)
-    call = match.group(3)
     try:
-        # if this is an ID, this most probably a smf-registrations ID or similar
-        int(call)
-        match = sbi_regex2.match(sbi_url)
-        call = match.group(3)
+        named_groups = match.groupdict()
+        method = named_groups['method']
+        url = named_groups['url']
+        cleaned_url = imsi_cleaner.sub('', url)
+        cleaned_url = pdu_session_id_cleaner.sub('', cleaned_url)
+        cleaned_url = multiple_slash_cleaner.sub('/', cleaned_url)
+
+        # In some cases multiple inputs may pollute the output. Clean-up here and hope that nothing breaks ;)
+        split_output = cleaned_url.split('\\n')
+        if len(split_output) == 1:
+            return [ sbiUrlDescription(method, split_output[0]) ]
+
+        cleaned_url = []
+        cleaned_url.append(sbiUrlDescription(method, split_output[0]))
+        for e in split_output[1:]:
+            match = sbi_regex.match(e)
+            if match is None:
+                return None
+            named_groups = match.groupdict()
+            method = named_groups['method']
+            url = named_groups['url']
+            _cleaned_url = imsi_cleaner.sub('', url)
+            _cleaned_url = pdu_session_id_cleaner.sub('', cleaned_url)
+            _cleaned_url = multiple_slash_cleaner.sub('/', cleaned_url)
+            cleaned_url.append(sbiUrlDescription(method, _cleaned_url))
+
+        return cleaned_url
     except:
-        pass
-    return sbiUrlDescription(nf, call)
+        return None
 
 
 if __name__ == '__main__':
