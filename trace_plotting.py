@@ -94,9 +94,7 @@ def _generate_summary_row(x):
         if sbi_url_descriptions is None:
             summary = ''
         else:
-            for sbi_url_description in sbi_url_descriptions:
-                summary = '{0} {1}'.format(sbi_url_description.method, sbi_url_description.call)
-        # print('{0}->{1}'.format(summary_raw, summary))
+            summary = '\n'.join(['{0} {1}'.format(sbi_url_description.method, sbi_url_description.call) for sbi_url_description in sbi_url_descriptions])
     else:
         summary = ''
     return summary
@@ -345,7 +343,10 @@ def read_xml_file_line_basis(xml_file):
     return df
 
 
-def calculate_procedure_length(packets_df):
+def calculate_procedure_length(packets_df, logging_level=logging.INFO):
+    current_verbosity_level = trace_visualizer.application_logger.level
+    trace_visualizer.application_logger.setLevel(logging_level)
+
     procedure_frames = packets_df[
         ((packets_df['summary'] == 'NAS Registration request (0x41)') & (
             ~packets_df['msg_description'].str.contains(r'Security mode complete \(0x5e\)'))) |
@@ -401,26 +402,25 @@ def calculate_procedure_length(packets_df):
 
     logging.debug('Parsing procedures based on RAN_UE_NGAP_ID')
 
-    def row_to_id(row, procedure='', reverse=False, index_for_multi_messages=None):
+    def row_to_id(_row, reverse=False, index_for_multi_messages=None):
         if not reverse:
-            src = row.ip_src
-            dst = row.ip_dst
+            src = _row.ip_src
+            dst = _row.ip_dst
         else:
-            dst = row.ip_src
-            src = row.ip_dst
-        http_stream = row.HTTP_STREAM
+            dst = _row.ip_src
+            src = _row.ip_dst
+        http_stream = _row.HTTP_STREAM
         if index_for_multi_messages is not None:
             try:
-                http_stream = row.HTTP_STREAM.split('\n')[index_for_multi_messages]
+                http_stream = _row.HTTP_STREAM.split('\n')[index_for_multi_messages]
             except:
                 logging.error('Could not extract HTTP_STREAM index {0} from row {1}', index_for_multi_messages, row)
                 pass
-        return '{0}-{1}-{2}-'.format(
+        generated_key = '{0}-{1}-{2}'.format(
             src,
             dst,
-            http_stream,
-            procedure
-        )
+            http_stream)
+        return generated_key
 
     for ran_id in unique_ran_ids:
         current_reg_start = 0
@@ -445,7 +445,14 @@ def calculate_procedure_length(packets_df):
             elif row.HTTP_TYPE == 'req':
                 # Check if this is a multi-messages HTTP/2
                 for idx, summary in enumerate(row.summary.split('\n')):
-                    current_proc_starts[row_to_id(row, idx)] = (row.timestamp, row.frame_number, row.datetime, summary)
+                    proc_key = row_to_id(row, index_for_multi_messages=idx)
+                    current_proc_starts[proc_key] = (row.timestamp, row.frame_number, row.datetime, summary)
+                    logging.debug('PUSH: HTTP/2: Frame {0}; HEADER {1}; {2}; HTTP-STREAM {3}; {4}'.format(
+                        row.frame_number,
+                        idx,
+                        summary,
+                        ', '.join(row.HTTP_STREAM.split('\n')),
+                        proc_key))
             elif row.summary == 'NAS Registration accept (0x42)':
                 procedure_time = (row.timestamp - current_reg_start) * 1000
                 procedures.append(
@@ -467,6 +474,10 @@ def calculate_procedure_length(packets_df):
             elif row.HTTP_TYPE == 'rsp':
                 key = row_to_id(row, reverse=True)
                 if key in current_proc_starts:
+                    logging.debug('POP: HTTP/2: Frame {0}; HTTP-STREAM {1}; {2}'.format(
+                        row.frame_number,
+                        row.HTTP_STREAM,
+                        key))
                     start = current_proc_starts[key]
                     procedure_time = (row.timestamp - start[0]) * 1000
                     procedures.append(ProcedureDescription(
@@ -476,12 +487,18 @@ def calculate_procedure_length(packets_df):
                         start[0], row.timestamp,
                         start[2], row.datetime))
                     current_proc_starts.pop(key)
+                else:
+                    logging.debug('NO-POP: HTTP/2: Frame {0}; HTTP-STREAM {1}; {2}'.format(
+                        row.frame_number,
+                        row.HTTP_STREAM,
+                        proc_key))
 
     procedure_df = pd.DataFrame(procedures, columns=['name', 'RAN_UE_NGAP_ID', 'length_ms', 'start_frame', 'end_frame',
                                                      'start_timestamp', 'end_timestamp',
                                                      'start_datetime', 'end_datetime'])
 
     logging.debug('Parsed {0} procedures'.format(len(procedure_df)))
+    trace_visualizer.application_logger.setLevel(current_verbosity_level)
     return procedure_df, procedure_frames
 
 

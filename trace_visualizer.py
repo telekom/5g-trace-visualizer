@@ -323,6 +323,14 @@ def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
 
 
 def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
+    if not isinstance(el, list):
+        return parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet)
+
+    all_json = [parse_http_proto_el(frame_number, e, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet) for e in el]
+    return '\n'.join(all_json)
+
+
+def parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
     # Option to ignore TCP spurious retransmissions
     try:
         if ignore_spurious_tcp_retransmissions:
@@ -1211,7 +1219,12 @@ def import_pdml(file_paths,
         elif len(ngap_proto) == 1:
             ngap_proto = ngap_proto[0]
 
-        http2_proto = packet.find("proto[@name='http2']")
+        # Support for several HTTP/2 proto elements
+        http2_proto = packet.findall("proto[@name='http2']")
+        if len(http2_proto) == 0:
+            http2_proto = None
+        elif len(http2_proto) == 1:
+            http2_proto = http2_proto[0]
 
         # We found one trace where the PFCP protocol was signaled as ICMP, which messed with the trace
         pfcp_proto = packet.find(".//proto[@name='pfcp']")
@@ -1706,6 +1719,7 @@ def parse_sbi_type_from_url(sbi_str):
         if len(split_output) == 1:
             return [ sbiUrlDescription(method, split_output[0]) ]
 
+        logging.debug('HTTP/2 frame contains more than one HEADERS frame: {0}'.format(cleaned_url))
         cleaned_url = []
         cleaned_url.append(sbiUrlDescription(method, split_output[0]))
         for e in split_output[1:]:
@@ -1716,12 +1730,13 @@ def parse_sbi_type_from_url(sbi_str):
             method = named_groups['method']
             url = named_groups['url']
             _cleaned_url = imsi_cleaner.sub('', url)
-            _cleaned_url = pdu_session_id_cleaner.sub('', cleaned_url)
-            _cleaned_url = multiple_slash_cleaner.sub('/', cleaned_url)
+            _cleaned_url = pdu_session_id_cleaner.sub('', _cleaned_url)
+            _cleaned_url = multiple_slash_cleaner.sub('/', _cleaned_url)
             cleaned_url.append(sbiUrlDescription(method, _cleaned_url))
-
+        logging.debug('Cleaned-up summary: {0}'.format(cleaned_url))
         return cleaned_url
     except:
+        traceback.print_exc()
         return None
 
 
