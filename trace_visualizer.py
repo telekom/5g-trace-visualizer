@@ -1563,7 +1563,10 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     # Add option to not use a Wireshark portable version but rather the OS-installed one
     if wireshark_version == 'OS':
-        tshark_path = os.path.join('tshark')
+        if (platform == 'Linux'):
+            tshark_path = "/usr/bin/tshark"
+        else:
+            tshark_path = os.path.join('tshark')
     else:
         tshark_path = os.path.join(get_wireshark_portable_folder(wireshark_version), 'tshark')
     logging.debug('tshark path: {0}'.format(tshark_path))
