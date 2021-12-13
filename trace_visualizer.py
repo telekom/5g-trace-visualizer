@@ -248,6 +248,27 @@ def parse_gtpv2_proto(frame_number, gtpv2_pdu, show_heartbeat):
     return nas_5g_json_str
 
 
+def parse_diam_proto(frame_number, diam_pdu, show_heartbeat):
+    if diam_pdu is None:
+        return ''
+
+    # Option to ignore heartbeats
+    try:
+        if not show_heartbeat:
+            is_heartbeat = diam_pdu.find("field[@name='diameter.applicationId'][@value='00000000']")
+            if (is_heartbeat is not None):
+                logging.debug('Frame {0}: ignored Diameter heartbeat message'.format(frame_number))
+                return None
+    except:
+        pass
+
+    # Dump message content
+    diam_pdu_dict = nas_5g_proto_to_dict(diam_pdu)
+    nas_5g_json_str = yaml.dump(diam_pdu_dict, indent=4, width=1000, sort_keys=False)
+
+    return nas_5g_json_str
+
+
 def parse_ipv6_route_advertisement_proto(frame_number, protocol):
     if protocol is None:
         return ''
@@ -1322,7 +1343,7 @@ def import_pdml(file_paths,
                 logging.debug(gtpv2_request)
             msg_description = gtpv2_request
         if diameter_proto:
-            diameter_request = parse_gtpv2_proto(frame_number, diameter_proto, show_heartbeat)
+            diameter_request = parse_diam_proto(frame_number, diameter_proto, show_heartbeat)
             if debug:
                 logging.debug('Diameter')
                 logging.debug(diameter_request)
@@ -1563,14 +1584,17 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     # Add option to not use a Wireshark portable version but rather the OS-installed one
     if wireshark_version == 'OS':
-        tshark_path = os.path.join('tshark')
+        if (platform == 'Linux'):
+            tshark_path = "/usr/bin/tshark"
+        else:
+            tshark_path = os.path.join('tshark')
     else:
         tshark_path = os.path.join(get_wireshark_portable_folder(wireshark_version), 'tshark')
     logging.debug('tshark path: {0}'.format(tshark_path))
 
     # Add folder check to make more understandable error messages
     tshark_folder = get_wireshark_portable_folder(wireshark_version)
-    if not os.path.isdir(tshark_folder):
+    if not os.path.isdir(tshark_folder) and not (platform == 'Linux'):
         raise FileNotFoundError('Could not find tshark on path {0}'.format(tshark_path))
 
     if not merged:
