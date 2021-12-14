@@ -729,6 +729,11 @@ def get_diam_description(packet):
         Return diameter packet description as follow:
         Command-Code + Application-Id + Session-Id
     '''
+    short_commands = {
+        "274 Abort-Session": "274 AS",
+        "275 Session-Termination": "275 ST",
+        "280 Device-Watchdog": "280 DW",
+    }
     diam_commandcode_regex = re.compile(r"diameter\.cmd\.code:\s+'Command\s+Code:\s+(.+)'")
     diam_application_regex = re.compile(r"diameter\.applicationId:\s+'ApplicationId:\s+(.+)'")
     diam_request_regex = re.compile(r"diameter\.flags\.request:\s+'(\d)")
@@ -744,12 +749,10 @@ def get_diam_description(packet):
         command_postfix = 'R'
 
     command = command_code.group(1) if command_code else ''
-    # fix Session-Termination full name, change to short acronym
-    if command == "275 Session-Termination":
-        command = "275 ST"
-    # fix Device-Watchdog full name, change to short acronym
-    elif command == "280 Device-Watchdog":
-        command = "280 DW"
+    # fix Command-Code full name, change to short acronym
+    if command in short_commands:
+        command = short_commands[command]
+        
 
     application_id = application.group(1) if application else ''
     session_id = '\\nSession-Id: ' + session.group(1) if session else ''
