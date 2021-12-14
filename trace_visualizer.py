@@ -724,6 +724,43 @@ PacketDiagramDescription = collections.namedtuple(
     'description ip_src ip_dst protocol')
 
 
+def get_diam_description(packet):
+    ''' 
+        Return diameter packet description as follow:
+        Command-Code + Application-Id + Session-Id
+    '''
+    diam_commandcode_regex = re.compile(r"diameter\.cmd\.code:\s+'Command\s+Code:\s+(.+)'")
+    diam_application_regex = re.compile(r"diameter\.applicationId:\s+'ApplicationId:\s+(.+)'")
+    diam_request_regex = re.compile(r"diameter\.flags\.request:\s+'(\d)")
+    diam_session_regex = re.compile(r"diameter\.Session-Id:\s+'Session-Id:\s+(.+)'")
+
+    command_code = diam_commandcode_regex.search(packet.msg_description)
+    application = diam_application_regex.search(packet.msg_description)
+    session = diam_session_regex.search(packet.msg_description)
+    # Command-Code not contain Request or Answer property.
+    # Add it manually at the end of Command-Code
+    command_postfix = 'A'
+    if diam_request_regex.search(packet.msg_description).group(1) == '1':
+        command_postfix = 'R'
+
+    command = command_code.group(1) if command_code else ''
+    # fix Session-Termination full name, change to short acronym
+    if command == "275 Session-Termination":
+        command = "275 ST"
+    # fix Device-Watchdog full name, change to short acronym
+    elif command == "280 Device-Watchdog":
+        command = "280 DW"
+
+    application_id = application.group(1) if application else ''
+    session_id = '\\nSession-Id: ' + session.group(1) if session else ''
+    # Truncate Session-Id if it too long
+    if len(session_id) > 70:
+        session_id = session_id[0:35] + '...' + session_id[len(session_id)-1:len(session_id)-16:-1] 
+
+    description = 'Diameter, {0}{1} {2}{3}'.format(command, command_postfix, application_id, session_id)
+    return description
+
+
 def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_timestamp=False):
     protocol = packet.protocols_str
     note_color = ''
@@ -814,6 +851,7 @@ def packet_to_str(packet, simple_diagrams=False, force_show_frames='', show_time
 
     elif 'Diameter' in protocol or 'RADIUS' in protocol or "GTP'" in protocol:
         note_color = ' {0}'.format(color_diameter_radius_gtpprime)
+        protocol = get_diam_description(packet)
 
     if show_timestamp:
         try:
