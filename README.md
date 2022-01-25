@@ -22,9 +22,10 @@
     * [Using several Wireshark versions for decoding](#using-several-wireshark-versions-for-decoding)
     * [Omitting HTTP/2 headers](#omitting-http2-headers)
     * [Adding additional host labels](#adding-additional-host-labels)
-	* [Adding timestamps](#adding-timestamps)
+    * [Adding timestamps](#adding-timestamps)
     * [Showing only certain packets](#showing-only-certain-packets)
     * [Sharing an edited trace](#sharing-an-edited-trace)
+    * [Ordering labels in a specific order](#ordering-labels-in-a-specific-order)
 
 # Summary
 
@@ -399,6 +400,10 @@ The result can be seen below:
 ![free5GC plain](doc/examples/free5gc_3.2.2_imsi_header_edited.PNG)
 
 Maybe some editing features will be added in the feature, but will depend on whether that is really needed or not.
+
+### Ordering labels in a specific order
+
+Just use ``-force_order``, e.g. ``-force_order "gNB,AMF,SMF,UDM``
 
 ## Notes
 
