@@ -1605,6 +1605,8 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         mergecap_path = os.path.join(get_wireshark_portable_folder(wireshark_version), 'mergecap')
         if wireshark_version == 'OS' and (platform == 'Linux'):
             mergecap_path  = "/usr/bin/mergecap"
+        elif wireshark_version == 'OS' and (platform != 'Linux'):
+            mergecap_path = 'mergecap'
         mergecap_command = [
             mergecap_path,
             '-w',
