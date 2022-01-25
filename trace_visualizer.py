@@ -1637,7 +1637,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     # Add folder check to make more understandable error messages
     tshark_folder = get_wireshark_portable_folder(wireshark_version)
-    if not os.path.isdir(tshark_folder) and not (platform == 'Linux'):
+    if not os.path.isdir(tshark_folder) and not (platform == 'Linux') and (wireshark_version!='OS'):
         raise FileNotFoundError('Could not find tshark on path {0}'.format(tshark_path))
 
     if not merged:
@@ -1664,8 +1664,39 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
             tshark_command.append('-d')
             tshark_command.append('tcp.port=={0},http2'.format(port))
 
+        if wireshark_version == 'OS':
+            def retrieve_tshark_version(tshark_path_to_check):
+                parsed_output = ''
+                try:
+                    tshark_version_command = tshark_path_to_check + " -v"
+                    logging.debug('Checking installed tshark version: {0}'.format(tshark_version_command))
+                    subprocess_ref = subprocess.Popen(tshark_version_command, shell=True, stdout=subprocess.PIPE)
+                    subprocess_return = subprocess_ref.stdout.read()
+                    parsed_output = subprocess_return.decode()
+                    parsed_match = re.match(r'TShark \(Wireshark\) ([\d]{1,2}.[\d]{1,2}.[\d]{1,2})', parsed_output)
+                    parsed_version = parsed_match.group(1)
+                    logging.debug('Parsed tshark OS version {0}'.format(parsed_version))
+                    return parsed_version
+                except:
+                    logging.debug('Could not parse tshark version for {0}'.format(tshark_path_to_check))
+                    traceback.print_exc()
+                    logging.debug('Retrieved output:\n{0}'.format(parsed_output))
+                    return None
+
+            tshark_os_version = retrieve_tshark_version(tshark_path)
+            if tshark_os_version is not None:
+                os_tshark_parsed = True
+                wireshark_version = tshark_os_version
+            else:
+                os_tshark_parsed = False
+        else:
+            os_tshark_parsed = False
+
         # Add 5GS null ciphering decode (WS versions >=3)
-        logging.debug('Using Wireshark version {0}'.format(wireshark_version))
+        if not os_tshark_parsed:
+            logging.debug('Using Wireshark version {0}'.format(wireshark_version))
+        else:
+            logging.debug('Using OS Wireshark version {0}'.format(wireshark_version))
 
         # Assume that a current Wireshark version is installed in the machine
         if wireshark_version == 'OS' or (version.parse(wireshark_version) >= version.parse('3.0.0')):
@@ -1677,7 +1708,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     # Added disabling name resolution (see #2). Reference: https://tshark.dev/packetcraft/add_context/name_resolution/
     # Added GTPv2 for N26 messages and TCP to filter out spurious TCP retransmissions
-    # Added ICMP because it was observed that sometimes PFCP messages are put into the icmp <proto> tag
+    # Added ICMP becauspie it was observed that sometimes PFCP messages are put into the icmp <proto> tag
     if mode is None:
         tshark_command.extend([
             '-Y',
