@@ -403,7 +403,7 @@ Maybe some editing features will be added in the feature, but will depend on whe
 
 ### Ordering labels in a specific order
 
-Just use ``-force_order``, e.g. ``-force_order "gNB,AMF,SMF,UDM``
+Just use ``-force_order``, e.g. ``-force_order "gNB,AMF,SMF,UDM"``
 
 ## Notes
 
