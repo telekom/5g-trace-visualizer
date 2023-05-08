@@ -18,6 +18,7 @@ import subprocess
 import sys
 import traceback
 import urllib.parse
+import xml
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -102,19 +103,30 @@ def find_nas_proto(ngap_pdu):
     return all_nas
 
 
-def xml2json(root):
-    def recursiv(the_root):
+def xml2json(root: xml.etree.ElementTree.Element):
+    def recursiv(the_root: xml.etree.ElementTree.Element):
         out = {}
         children_list = list(the_root)
         number_of_children = len(children_list)
+        child_name_counter = {}
         for child in children_list:
             child_name = child.attrib["name"]
-            number_of_grandchildren = len(list(child))
-            if number_of_grandchildren > 0:
-                # Avoid '' child name if possible
-                if child_name == '' and 'show' in child.attrib:
-                    child_name = child.attrib['show']
+            # Avoid '' child name if possible
+            if child_name == '' and 'show' in child.attrib:
+                child_name = child.attrib['show']
 
+            number_of_grandchildren = len(list(child))
+
+            # In some cases, you can have repeated keys, e.g. several TACs, see #28
+            original_child_name = child_name
+            if child_name not in child_name_counter:
+                child_name_counter[child_name] = 1
+            else:
+                child_name_counter[child_name] = child_name_counter[child_name] + 1
+                child_name = '{0}{1}'.format(child_name, child_name_counter[child_name])
+                print('Found repeated child element {0}. Renamed to {1}'.format(original_child_name, child_name))
+
+            if number_of_grandchildren > 0:
                 if child_name not in out:
                     out[child_name] = []
                 child_to_traverse = child
@@ -123,7 +135,7 @@ def xml2json(root):
                 data_to_append = recursiv(child_to_traverse)
 
                 # Make the JSON smaller by removing non-useful tags
-                if (child_name == 'ngap.ProtocolIE_Field_element' or child_name == '') and (number_of_children == 1):
+                if (original_child_name == 'ngap.ProtocolIE_Field_element' or original_child_name == '') and (number_of_children == 1):
                     return data_to_append
 
                 # Reduce arrays of length 1 in dictionary
