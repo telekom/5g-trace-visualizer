@@ -123,8 +123,8 @@ def xml2json(root: xml.etree.ElementTree.Element):
                 child_name_counter[child_name] = 1
             else:
                 child_name_counter[child_name] = child_name_counter[child_name] + 1
-                child_name = '{0}{1}'.format(child_name, child_name_counter[child_name])
-                print('Found repeated child element {0}. Renamed to {1}'.format(original_child_name, child_name))
+                child_name = '{0} ({1})'.format(child_name, child_name_counter[child_name])
+                logging.DEBUG('Found repeated child element {0}. Renamed to {1}'.format(original_child_name, child_name))
 
             if number_of_grandchildren > 0:
                 if child_name not in out:
