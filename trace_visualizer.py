@@ -111,6 +111,7 @@ def xml2json(root: xml.etree.ElementTree.Element):
         child_name_counter = {}
         for child in children_list:
             child_name = child.attrib["name"]
+            # logging.debug(f'Element name: {child_name}')
             # Avoid '' child name if possible
             if child_name == '' and 'show' in child.attrib:
                 child_name = child.attrib['show']
@@ -124,7 +125,6 @@ def xml2json(root: xml.etree.ElementTree.Element):
             else:
                 child_name_counter[child_name] = child_name_counter[child_name] + 1
                 child_name = '{0} ({1})'.format(child_name, child_name_counter[child_name])
-                logging.DEBUG('Found repeated child element {0}. Renamed to {1}'.format(original_child_name, child_name))
 
             if number_of_grandchildren > 0:
                 if child_name not in out:
@@ -1040,7 +1040,14 @@ def output_puml(output_file,
         # Participants
         for participant in participants:
             participant_str = '{0} {1}\n'.format(participant[0], participant[1])
-            f.write(participant_str)
+            # Remove participant name if it contains ":", such as "::1"
+            # This is due to PlantUML not being able to accept the ":" character in the "as" parameter
+            participant_match = re.match(r'participant \"(.*)\" as (.*)', participant_str)
+            if participant_match is not None and ':' in participant_match.group(2):
+                logging.debug(
+                    'Removing "{0}" because "as" parameter does not support colons'.format(participant_str.replace('\n','')))
+            else:
+                f.write(participant_str)
         f.write('\n')
 
         # Packets
