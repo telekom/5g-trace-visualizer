@@ -702,18 +702,6 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             http2_request = http2_request + '\n'.join(
                 ['{0}: {1}'.format(header[0], header[1]) for header in header_list])
 
-    # Fix for #29 by @rtommy
-    # In case a HTTP/2 message has "HEADERS" only and no "DATA", the SVG is not correct since there is a missing newline char in the uml file.
-    # For example:
-    # "SMF" -> "AMF2": 91. HTTP/2 204 rsp.
-    # note right of "SMF" #e6e6e6
-    # SMF to AMF2
-    # 10.206.108.92 to 10.206.108.67 (IPs)
-    # HTTP/2 stream: 37
-    # :status: 204end note
-    if (data_ascii == '') and (http2_request != ''):
-        http2_request = http2_request + '\n'
-
     if (data_ascii != '') and (http2_request != ''):
         http2_request = http2_request + '\n\n'
     if data_ascii != '':
