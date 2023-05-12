@@ -21,8 +21,11 @@ import urllib.parse
 import xml
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from enum import Enum
+from typing import Pattern, Tuple
 
 import yaml
+from lxml.etree import Element
 from packaging import version
 
 import yaml_parser
@@ -32,7 +35,7 @@ application_logger.setLevel(logging.DEBUG)
 
 wireshark_folder = 'wireshark'
 
-ip_regex = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
+ip_regex: Pattern[str] = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
 debug = False
 ascii_non_printable = re.compile(r'[\x00-\x09\x0b-\x0c\x0e-\x1f]')
@@ -40,6 +43,14 @@ http_payload_for_stream = re.compile(r'HTTP/2 stream ([\d]+) payload')
 
 PacketDescription = collections.namedtuple('PacketDescription',
                                            'ip_src ip_dst frame_number protocols_str msg_description timestamp timestamp_offsett')
+
+
+class PacketType(Enum):
+    UNKNOWN = 0
+    IPv4 = 1
+    IPv6 = 2
+    CUSTOM = 3
+
 
 # https://www.w3schools.com/colors/colors_picker.asp
 color_actors = '#e6e6e6'
@@ -69,7 +80,7 @@ http_url_regex = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
 
 mime_multipart_payload_regex = re.compile(
-    r"(--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+Content-Type: (?P<content_type>[a-zA-Z0-9 \/\.]+)[\n\r]+(Content-Id: (?P<content_id>[a-zA-Z0-9 \/\.]+)[\n\r]+)?)(.*)")
+    r"(?P<header>--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+(Content-Type: (?P<content_type>[a-zA-Z0-9 \/\.]+)[\n\r]+|(Content-I[dD]: (?P<content_id>[a-zA-Z0-9 \/\.]+)[\n\r]+))+)(?P<payload>.*)")
 
 http2_string_unescape = True
 
@@ -79,7 +90,7 @@ max_ascii_length_for_http_payload = 5000
 max_ascii_length_for_json_param = 250
 
 
-def find_nas_proto(ngap_pdu):
+def find_nas_proto(ngap_pdu: Element) -> list[Element]:
     if ngap_pdu is None:
         return None
 
@@ -135,7 +146,8 @@ def xml2json(root: xml.etree.ElementTree.Element):
                 data_to_append = recursiv(child_to_traverse)
 
                 # Make the JSON smaller by removing non-useful tags
-                if (original_child_name == 'ngap.ProtocolIE_Field_element' or original_child_name == '') and (number_of_children == 1):
+                if (original_child_name == 'ngap.ProtocolIE_Field_element' or original_child_name == '') and (
+                        number_of_children == 1):
                     return data_to_append
 
                 # Reduce arrays of length 1 in dictionary
@@ -212,7 +224,8 @@ def parse_nas_proto(frame_number, el, multipart_proto=False):
     all_json = [parse_nas_proto_el(frame_number, e, multipart_proto) for e in el]
     return '\n'.join(all_json)
 
-def parse_nas_proto_el(frame_number, el, multipart_proto=False):
+
+def parse_nas_proto_el(frame_number, el: Element, multipart_proto=False):
     if not multipart_proto:
         ngap_pdu = el.find("field[@name='ngap.NGAP_PDU']")
     else:
@@ -233,7 +246,12 @@ def parse_nas_proto_el(frame_number, el, multipart_proto=False):
     try:
         nas_5g_json_str = 'NGAP-PDU: {0}\n{1}'.format(ngap_pdu.attrib['value'], nas_5g_json_str)
     except:
-        logging.debug('Frame {0}: Could not add NGAP PDU session payload'.format(frame_number))
+        try:
+            # Some newer Wireshark versions may already include the parsed message
+            nas_5g_json_str = 'NGAP-PDU: {0}\n{1}'.format(ngap_pdu.find('field').attrib['value'], nas_5g_json_str)
+        except:
+            logging.error('Frame {0}: Could not add NGAP PDU session payload'.format(frame_number))
+            traceback.print_exc()
 
     return nas_5g_json_str
 
@@ -357,9 +375,12 @@ def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
 
 def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
     if not isinstance(el, list):
-        return parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet)
+        return parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions,
+                                   packet)
 
-    all_json = [parse_http_proto_el(frame_number, e, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet) for e in el]
+    all_json = [
+        parse_http_proto_el(frame_number, e, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet) for e
+        in el]
     return '\n'.join(all_json)
 
 
@@ -503,7 +524,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             current_data = data.attrib['value']
 
             try:
-                # Get, concatenate and clear cache for framents for this frame number
+                # Get, concatenate and clear cache for fragments for this frame number
                 former_fragments = get_http2_fragments(frame_number, stream_id)
                 # Seen sometimes that the fragments are repeated in the http2.data.data part
                 if len(former_fragments) > 0:
@@ -560,6 +581,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             # packet
             if boundary is None and len(headers) == 0:
                 data_ascii = hex_string_to_ascii(data_hex)
+                print('AAAAAAAA')
+                print(data_ascii)
                 try:
                     m_all = [m for m in mime_multipart_payload_regex.finditer(data_ascii)]
                     # logging.debug(data_ascii)
@@ -575,14 +598,14 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     if len(m_all) > 0:
                         boundary = m_all[0].group(2)
                         # (header length, payload length)
-                        multipart_lengths = [(len(m.group(1)), len(m.group(6))) for m in m_all]
+                        multipart_lengths = [(len(m.group('header')), len(m.group('payload'))) for m in m_all]
 
                         def parse_content_id(a_str):
                             if a_str is None:
                                 return "No Content ID"
                             return a_str
 
-                        multipart_descriptions = ['{0} ({1})'.format(m.group(3), parse_content_id(m.group(5))) for m in
+                        multipart_descriptions = ['{0} ({1})'.format(m.group('content_type'), parse_content_id(m.group('content_id'))) for m in
                                                   m_all]
                         logging.debug(
                             'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
@@ -643,10 +666,10 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                             boundary, boundary_hex))
                     try:
                         logging.debug(
-                            'Total payload length: {0} bytes, {1} characters. Header and payload length: {2}'.format(
+                            'Total payload length: {0} bytes, {1} characters. Length: {2}'.format(
                                 len(data_hex),
                                 len(data_ascii),
-                                ', '.join(['{0}/{1}'.format(e[0], e[1]) for e in multipart_lengths])
+                                ', '.join(['{0} (header)/{1} (payload)'.format(e[0], e[1]) for e in multipart_lengths])
                             ))
 
                         # Add '--' to the boundary and get rid of starting and end trails
@@ -655,23 +678,28 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                         # Adjust length as per the length found by the regex
                         split_payload_clean = []
                         for idx, payload in enumerate(split_payload):
-                            header_length = multipart_lengths[idx][0] * 2
-                            length_to_cut = header_length - len(split_str)
-                            logging.debug('Removing {0} additional bytes'.format(length_to_cut))
-                            payload_clean = payload[length_to_cut:]
+                            try:
+                                header_length = multipart_lengths[idx][0] * 2
+                                length_to_cut = header_length - len(split_str)
+                                logging.debug('Removing {0} additional bytes'.format(length_to_cut))
+                                payload_clean = payload[length_to_cut:]
 
-                            def rchop(s, suffix):
-                                if suffix and s.endswith(suffix):
-                                    return s[:-len(suffix)]
-                                return s
+                                def rchop(s, suffix):
+                                    if suffix and s.endswith(suffix):
+                                        return s[:-len(suffix)]
+                                    return s
 
-                            payload_clean = rchop(payload_clean, '0d0a')
-                            payload_clean_assembled = '{0}\n{1}'.format(
-                                multipart_descriptions[idx],
-                                hex_string_to_ascii(payload_clean, return_original_if_not_json=True)
-                            )
+                                payload_clean = rchop(payload_clean, '0d0a')
+                                payload_clean_assembled = '{0}\n{1}'.format(
+                                    multipart_descriptions[idx],
+                                    hex_string_to_ascii(payload_clean, return_original_if_not_json=True)
+                                )
 
-                            split_payload_clean.append(payload_clean_assembled)
+                                split_payload_clean.append(payload_clean_assembled)
+                            except:
+                                logging.error(
+                                    f'Error processing multipart message (idx={idx}). Multipart lengths: {multipart_lengths}. Split payload={split_payload}')
+                                traceback.print_exc()
                         data_ascii = '\n\n'.join(split_payload_clean)
                         data_ascii = 'Parsed multipart payload (missing header?)\n\n{0}'.format(data_ascii)
                         # logging.debug(data_ascii)
@@ -773,13 +801,12 @@ def get_diam_description(packet):
     # fix Command-Code full name, change to short acronym
     if command in short_commands:
         command = short_commands[command]
-        
 
     application_id = application.group(1) if application else ''
     session_id = '\\nSession-Id: ' + session.group(1) if session else ''
     # Truncate Session-Id if it too long
     if len(session_id) > 70:
-        session_id = session_id[0:35] + '...' + session_id[len(session_id)-1:len(session_id)-16:-1] 
+        session_id = session_id[0:35] + '...' + session_id[len(session_id) - 1:len(session_id) - 16:-1]
 
     description = 'Diameter, {0}{1} {2}{3}'.format(command, command_postfix, application_id, session_id)
     return description
@@ -1041,7 +1068,8 @@ def output_puml(output_file,
             participant_match = re.match(r'participant \"(.*)\" as (.*)', participant_str)
             if participant_match is not None and ':' in participant_match.group(2):
                 logging.debug(
-                    'Removing "{0}" because "as" parameter does not support colons'.format(participant_str.replace('\n','')))
+                    'Removing "{0}" because "as" parameter does not support colons'.format(
+                        participant_str.replace('\n', '')))
             else:
                 f.write(participant_str)
         f.write('\n')
@@ -1182,7 +1210,30 @@ def import_pdml(file_paths,
                 ignore_spurious_tcp_retransmissions=True,
                 ignore_pfcp_duplicate_packets=True,
                 show_timestamp=False,
-                show_selfmessages=False):
+                show_selfmessages=False,
+                custom_packet_filter: str = None,
+                custom_packet_filter_ip_labels: Tuple[str, str, str, str] = None):
+    """
+    Imports a PDML file
+    :param custom_packet_filter: A custom filter that can be used in case your capture uses other packet formats
+    (e.g. exports from proprietary and/or internal tools) such as proto[@name='ip'] or proto[@name='custom_protocol']
+    :param custom_packet_filter_ip_labels: if custom_packet_filter is used, this specifies how the IP src and destination are parsed
+    :param file_paths:
+    :param pod_mapping:
+    :param limit:
+    :param show_heartbeat:
+    :param vm_mapping:
+    :param ignorehttpheaders:
+    :param diagrams_to_output:
+    :param simple_diagrams:
+    :param force_show_frames:
+    :param force_order:
+    :param ignore_spurious_tcp_retransmissions:
+    :param ignore_pfcp_duplicate_packets:
+    :param show_timestamp:
+    :param show_selfmessages:
+    :return:
+    """
     logging.debug('PDML file path(s): {0}'.format(file_paths))
 
     if ignorehttpheaders is None:
@@ -1251,7 +1302,7 @@ def import_pdml(file_paths,
     last_pfcp_message = None
     first_timestamp = None
     for idx, packet in enumerate(filtered_root_packets):
-        packet_type = 'Unknown'
+        packet_type = PacketType.UNKNOWN
         frame_number = packet.find("proto[@name='geninfo']/field[@name='num']").attrib['show']
         # Extract timestamp
         try:
@@ -1264,23 +1315,54 @@ def import_pdml(file_paths,
         # Fixes #1 and #3, thanks cfalcken!
         # I wonder what would happen if we have IP-in-IP with different IP versions, but I wonder if anyone will really do something like that...
         ipv4_protos = packet.findall("proto[@name='ip']")
-        ipv6_protocs = packet.findall("proto[@name='ipv6']")
+        ipv6_protos = packet.findall("proto[@name='ipv6']")
+        custom_protos = []
+        if custom_packet_filter is not None and custom_packet_filter != '':
+            try:
+                custom_proto_filter_str = f"proto[@name='{custom_packet_filter}']"
+                logging.debug(f"Applying custom packet filter {custom_proto_filter_str}")
+                custom_protos = packet.findall(custom_proto_filter_str)
+            except:
+                logging.error(f"Could not apply custom packet filter {custom_proto_filter_str}")
         # Skip ARP and similars (see #3). Should only happen if you directly import a PDML file.
-        if len(ipv4_protos) == 0 and len(ipv6_protocs) == 0:
+        if len(ipv4_protos) == 0 and len(ipv6_protos) == 0 and len(custom_protos) == 0:
             logging.debug('Skipping non-IP packet {0}'.format(idx))
             continue
         try:
             ip_showname = packet.findall("proto[@name='ip']")[-1].attrib['showname']
-            packet_type = 'ipv4'
+            packet_type = PacketType.IPv4
         except:
-            ip_showname = packet.findall("proto[@name='ipv6']")[-1].attrib['showname']
-            packet_type = 'ipv6'
+            try:
+                ip_showname = packet.findall("proto[@name='ipv6']")[-1].attrib['showname']
+                packet_type = PacketType.IPv6
+            except:
+                ip_showname = packet.findall(custom_proto_filter_str)[-1].attrib['showname']
+                packet_type = PacketType.CUSTOM
 
         try:
-            logging.debug('{0}: {1}'.format(frame_number, ip_showname))
-            ip_match = ip_regex.search(ip_showname)
-            ip_src = ip_match.group(1)
-            ip_dst = ip_match.group(2)
+            logging.debug('{0}: Frame {1}. Parsing as packet type {2}'.format(frame_number, ip_showname, packet_type))
+            if packet_type != PacketType.CUSTOM:
+                ip_match = ip_regex.search(ip_showname)
+                ip_src = ip_match.group(1)
+                ip_dst = ip_match.group(2)
+            else:
+                # Fake source/destination just as filler
+                if (custom_packet_filter_ip_labels is not None) and (len(custom_packet_filter_ip_labels) >= 4):
+                    filter_src = custom_packet_filter_ip_labels[0]
+                    attr_src = custom_packet_filter_ip_labels[1]
+                    filter_dst = custom_packet_filter_ip_labels[2]
+                    attr_dst = custom_packet_filter_ip_labels[3]
+                    ip_src = 'Unknown'
+                    ip_dst = 'Unknown'
+                    try:
+                        filter_src_els = packet.findall('.//' + filter_src)
+                        filter_dst_els = packet.findall('.//' + filter_dst)
+                        ip_src = filter_src_els[-1].attrib[attr_src]
+                        ip_dst = filter_dst_els[-1].attrib[attr_dst]
+                    except:
+                        traceback.print_exc()
+                    logging.debug(f'Parsed custom protocol IP src: {ip_src}, IP dst: {ip_dst}')
+
         except:
             logging.debug('Skipped frame {0}'.format(frame_number))
             continue
@@ -1574,7 +1656,8 @@ def import_pdml(file_paths,
     return output_files
 
 
-def call_wireshark(wireshark_versions, input_file_str, http2ports_string, mode=None, check_if_exists=False):
+def call_wireshark(wireshark_versions, input_file_str, http2ports_string, mode=None, check_if_exists=False,
+                   additional_protocols=None):
     wireshark_versions_list = [e.strip() for e in wireshark_versions.split(',')]
     output_files = []
     successful_wireshark_call = False
@@ -1588,21 +1671,30 @@ def call_wireshark(wireshark_versions, input_file_str, http2ports_string, mode=N
                 logging.info('Using latest version found: {0}'.format(wireshark_version))
 
         logging.debug('Preparing call for Wireshark version {0}'.format(wireshark_version))
-        output_file = call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string, mode, check_if_exists)
+        output_file = call_wireshark_for_one_version(
+            wireshark_version,
+            input_file_str,
+            http2ports_string,
+            mode,
+            check_if_exists,
+            additional_protocols=additional_protocols
+        )
         output_files.append(output_file)
         successful_wireshark_call = True
 
     if not successful_wireshark_call:
         logging.error(
             'Could not successfully call Wireshark to parse files. Input parameters: version={0}; input file(s)={1}; HTTP/2 ports={2}'
-               .format(wireshark_versions, input_file_str, http2ports_string))
+            .format(wireshark_versions, input_file_str, http2ports_string))
         exit(1)
     return output_files
 
 
 def get_wireshark_portable_last_version():
     try:
-        found_versions = [(version.parse(e.group(1)), e.group(1)) for e in [re.search(r'WiresharkPortable_(.*)', e) for e in os.listdir(wireshark_folder) if os.path.isdir(os.path.join(wireshark_folder, e))] if e is not None]
+        found_versions = [(version.parse(e.group(1)), e.group(1)) for e in
+                          [re.search(r'WiresharkPortable_(.*)', e) for e in os.listdir(wireshark_folder) if
+                           os.path.isdir(os.path.join(wireshark_folder, e))] if e is not None]
         found_versions.sort(reverse=True, key=lambda x: x[0])
         last_Version = found_versions[0][1]
         logging.debug('Wireshark last version found: {0}'.format(last_Version))
@@ -1622,7 +1714,13 @@ def get_wireshark_portable_folder(wireshark_version):
         'Wireshark')
 
 
-def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports_string, mode=None, check_if_exists=False):
+def call_wireshark_for_one_version(
+        wireshark_version,
+        input_file_str,
+        http2ports_string,
+        mode=None,
+        check_if_exists=False,
+        additional_protocols: str = None):
     logging.debug('Wireshark call for {0}. Version {1}, HTTP/2 ports: {2}'.format(input_file_str, wireshark_version,
                                                                                   http2ports_string))
     input_files = input_file_str.split(',')
@@ -1632,7 +1730,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
         output_filename = '{0}_{2}_merged{1}'.format(filename, file_extension, wireshark_version)
         mergecap_path = os.path.join(get_wireshark_portable_folder(wireshark_version), 'mergecap')
         if wireshark_version == 'OS' and (platform == 'Linux'):
-            mergecap_path  = "/usr/bin/mergecap"
+            mergecap_path = "/usr/bin/mergecap"
         elif wireshark_version == 'OS' and (platform != 'Linux'):
             mergecap_path = 'mergecap'
         mergecap_command = [
@@ -1667,7 +1765,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
 
     # Add folder check to make more understandable error messages
     tshark_folder = get_wireshark_portable_folder(wireshark_version)
-    if not os.path.isdir(tshark_folder) and not (platform == 'Linux') and (wireshark_version!='OS'):
+    if not os.path.isdir(tshark_folder) and not (platform == 'Linux') and (wireshark_version != 'OS'):
         raise FileNotFoundError('Could not find tshark on path {0}'.format(tshark_path))
 
     if not merged:
@@ -1739,6 +1837,10 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
     # Added disabling name resolution (see #2). Reference: https://tshark.dev/packetcraft/add_context/name_resolution/
     # Added GTPv2 for N26 messages and TCP to filter out spurious TCP retransmissions
     # Added ICMP becauspie it was observed that sometimes PFCP messages are put into the icmp <proto> tag
+    protocols_to_include_in_pdml = 'http2 ngap pfcp gtpv2 tcp diameter radius gtpprime icmp icmpv6'
+    if additional_protocols is not None and additional_protocols != '':
+        protocols_to_include_in_pdml += ' ' + additional_protocols
+    logging.debug(f'Protocols to include in PDML file: {protocols_to_include_in_pdml}')
     if mode is None:
         tshark_command.extend([
             '-Y',
@@ -1746,7 +1848,7 @@ def call_wireshark_for_one_version(wireshark_version, input_file_str, http2ports
             '-T',
             'pdml',
             '-J',
-            'http2 ngap pfcp gtpv2 tcp diameter radius gtpprime icmp icmpv6',
+            protocols_to_include_in_pdml,
             '-n'
         ])
     elif mode == 'UDP':
@@ -1817,10 +1919,12 @@ def str2bool(v):
 
 
 sbiUrlDescription = collections.namedtuple('SbiDescription', 'method call')
-sbi_regex = re.compile(r'(?P<protocol>HTTP/2)?[ ]*([\w\.]+[\\n]+)?[ ]*(?P<method>POST|GET|PATCH|DELETE|PUT)?[ ]*(?P<url>/.*)')
+sbi_regex = re.compile(
+    r'(?P<protocol>HTTP/2)?[ ]*([\w\.]+[\\n]+)?[ ]*(?P<method>POST|GET|PATCH|DELETE|PUT)?[ ]*(?P<url>/.*)')
 imsi_cleaner = re.compile(r'imsi-[\d]+')
 pdu_session_id_cleaner = re.compile(r'/[\d]+')
 multiple_slash_cleaner = re.compile(r'/[/]+')
+
 
 def parse_sbi_type_from_url(sbi_str):
     # Examples:
@@ -1845,7 +1949,7 @@ def parse_sbi_type_from_url(sbi_str):
         # In some cases multiple inputs may pollute the output. Clean-up here and hope that nothing breaks ;)
         split_output = cleaned_url.split('\\n')
         if len(split_output) == 1:
-            return [ sbiUrlDescription(method, split_output[0]) ]
+            return [sbiUrlDescription(method, split_output[0])]
 
         logging.debug('HTTP/2 frame contains more than one HEADERS frame: {0}'.format(cleaned_url))
         cleaned_url = []
@@ -1921,6 +2025,16 @@ if __name__ == '__main__':
                         help='Whether you want to show the message timestamps in the diagram. Default is "False"')
     parser.add_argument('-show_selfmessages', type=str2bool, required=False, default=False,
                         help='Whether you want to show self-messages. You may want to turn this to "True" if you are running a trace on localhost. Default is "False"')
+    parser.add_argument('-custom_packet_filter', type=str, required=False, default='',
+                        help="Custom protocol filter to apply to only specific packets, i.e. applies proto[@name='custom_protocol_name'] when searching for packets in the PDML file")
+    parser.add_argument('-custom_ip_src', type=str, required=False, default='',
+                        help="If custom_packet_filter is used, the query for an element including the IP source, e.g. field[@name='field_with_ip']")
+    parser.add_argument('-custom_ip_src_attribute', type=str, required=False, default='',
+                        help="Where the actual value is placed, e.g. 'show'")
+    parser.add_argument('-custom_ip_dst', type=str, required=False, default='',
+                        help="If custom_packet_filter is used, the query for an element including the IP destination, e.g. field[@name='field_with_ip']")
+    parser.add_argument('-custom_ip_dst_attribute', type=str, required=False, default='',
+                        help="Where the actual value is placed, e.g. 'show'")
 
     args = parser.parse_args()
 
@@ -1946,12 +2060,18 @@ if __name__ == '__main__':
     print('Ignore PFCP packet duplicates: {0}'.format(args.ignore_pfcp_duplicate_packets))
     print('Show timestamp in diagram: {0}'.format(args.show_timestamp))
     print('Show self-messages: {0}'.format(args.show_selfmessages))
+    print('Custom protocol filter: {0}'.format(args.custom_packet_filter))
+    print(f'Custom protocol IP src: {args.custom_ip_src}')
+    print(f'Custom protocol IP src attribute: {args.custom_ip_src_attribute}')
+    print(f'Custom protocol IP dst: {args.custom_ip_dst}')
+    print(f'Custom protocol IP dst attribute: {args.custom_ip_dst_attribute}')
     print()
 
     http2_string_unescape = args.unescapehttp
     input_file = args.input
     if args.wireshark != 'none':
-        input_file = call_wireshark(args.wireshark, input_file, args.http2ports)
+        input_file = call_wireshark(args.wireshark, input_file, args.http2ports,
+                                    additional_protocols=args.custom_packet_filter)
     else:
         if not isinstance(input_file, str):
             print('\nERROR: PDML input only accepts one file')
@@ -1978,7 +2098,11 @@ if __name__ == '__main__':
         args.ignore_spurious_tcp_retransmissions,
         args.ignore_pfcp_duplicate_packets,
         args.show_timestamp,
-        args.show_selfmessages)
+        args.show_selfmessages,
+        custom_packet_filter=args.custom_packet_filter,
+        custom_packet_filter_ip_labels=(
+        args.custom_ip_src, args.custom_ip_src_attribute, args.custom_ip_dst, args.custom_ip_dst_attribute)
+    )
 
     if args.svg:
         print('Converting .puml files to SVG')
