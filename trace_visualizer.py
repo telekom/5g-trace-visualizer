@@ -413,6 +413,13 @@ def parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spuriou
 
     result_final = [e for e in result_final if e != '']
     full_text = '\n'.join(result_final)
+    # Fix for #29 In case a HTTP/2 message has "HEADERS" only and no "DATA", the SVG is not correct since there is a
+    # missing newline char in the uml file. For example: "SMF" -> "AMF2": 91. HTTP/2 204 rsp. note right of "SMF"
+    # #e6e6e6 SMF to AMF2 10.206.108.92 to 10.206.108.67 (IPs) HTTP/2 stream: 37 :status: 204end note In front of
+    # "end note" the newline is missing.
+    # Thanks @rtommy
+    if not full_text.endswith('\n'):
+        full_text = full_text + '\n'
     return full_text
 
 
