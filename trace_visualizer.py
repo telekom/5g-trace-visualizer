@@ -581,8 +581,6 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             # packet
             if boundary is None and len(headers) == 0:
                 data_ascii = hex_string_to_ascii(data_hex)
-                print('AAAAAAAA')
-                print(data_ascii)
                 try:
                     m_all = [m for m in mime_multipart_payload_regex.finditer(data_ascii)]
                     # logging.debug(data_ascii)
@@ -605,8 +603,10 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                 return "No Content ID"
                             return a_str
 
-                        multipart_descriptions = ['{0} ({1})'.format(m.group('content_type'), parse_content_id(m.group('content_id'))) for m in
-                                                  m_all]
+                        multipart_descriptions = ['{0} ({1})'.format(
+                            m.group('content_type'),
+                            parse_content_id(m.group('content_id'))) for m in m_all]
+
                         logging.debug(
                             'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
                                 boundary,
