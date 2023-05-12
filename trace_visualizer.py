@@ -69,7 +69,7 @@ http_url_regex = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
 
 mime_multipart_payload_regex = re.compile(
-    r"(--([a-zA-Z0-9 \/\.]+)[\n\r]+Content-Type: ([a-zA-Z0-9 \/\.]+)[\n\r]+(Content-Id: ([a-zA-Z0-9 \/\.]+)[\n\r]+)?)(.*)")
+    r"(--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+Content-Type: (?P<content_type>[a-zA-Z0-9 \/\.]+)[\n\r]+(Content-Id: (?P<content_id>[a-zA-Z0-9 \/\.]+)[\n\r]+)?)(.*)")
 
 http2_string_unescape = True
 
@@ -556,7 +556,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                         return http_data_as_hexstring
                 return ascii_str
 
-            # Try to auto-detect MIME multipart payloads in packets with no Ethernet frames
+            # Try to auto-detect MIME multipart payloads in packets with no HTTP/2 headers (e.g. headers sent in another
+            # packet
             if boundary is None and len(headers) == 0:
                 data_ascii = hex_string_to_ascii(data_hex)
                 try:
