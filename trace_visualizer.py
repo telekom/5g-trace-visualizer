@@ -80,7 +80,10 @@ http_url_regex = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
 
 mime_multipart_payload_regex = re.compile(
-    r"(?P<header>--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+(Content-Type: (?P<content_type>[a-zA-Z0-9 \/\.]+)[\n\r]+|(Content-I[dD]: (?P<content_id>[a-zA-Z0-9 \/\.]+)[\n\r]+))+)(?P<payload>.*)")
+    r"(?P<header>--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+"
+    "([cC]ontent-[tT]ype: (?P<content_type>[a-zA-Z0-9 \/\.]+)[\n\r]+|[cC]ontent-[iI][dD]: (?P<content_id>[a-zA-Z0-9 \/\._]+)[\n\r]+|[cC]ontent-[tT]ransfer-[eE]ncoding: (?P<content_encoding>[a-zA-Z0-9 \/\.]+)[\n\r]+)"
+    "+)"
+    "(?P<payload>.*)")
 
 http2_string_unescape = True
 
