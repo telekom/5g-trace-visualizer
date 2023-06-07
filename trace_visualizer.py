@@ -606,7 +606,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                 ', '.join(multipart_descriptions),
                                 len(boundary * 2)))
                         if len(m_all) > 0:
-                            boundary_scan = True
+                            boundary_scan = False
                 except:
                     logging.debug('Exception searching for boundary')
                     traceback.print_exc()
@@ -686,9 +686,6 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                     multipart_descriptions[idx],
                                     hex_string_to_ascii(payload_clean, return_original_if_not_json=True)
                                 )
-
-                                # TODO add 5G-NAS parsing if available
-                                # XPAth to the Content ID and return as YAML
 
                                 split_payload_clean.append(payload_clean_assembled)
                             except:
