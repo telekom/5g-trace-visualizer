@@ -1,5 +1,5 @@
 import pandas as pd
-import json_parser
+from parsing import json_parser
 import trace_visualizer
 import logging
 import os.path
@@ -11,6 +11,7 @@ from lxml import etree
 import collections
 import numpy as np
 import re
+
 
 def parse_k8s_kpis_as_dataframe(filename):
     # Parses a KPI file consisting of several lines of raw KPIs as output by the following kubectl command
@@ -94,7 +95,9 @@ def _generate_summary_row(x):
         if sbi_url_descriptions is None:
             summary = ''
         else:
-            summary = '\n'.join(['{0} {1}'.format(sbi_url_description.method, sbi_url_description.call) for sbi_url_description in sbi_url_descriptions])
+            summary = '\n'.join(
+                ['{0} {1}'.format(sbi_url_description.method, sbi_url_description.call) for sbi_url_description in
+                 sbi_url_descriptions])
     else:
         summary = ''
     return summary
@@ -125,7 +128,7 @@ def generate_scatterplots_for_wireshark_traces(
     # Generates a list of scatterplots based on the filtering criteria provided. e.g. if the filtering criteria is
     # 'file', it will generate one scatter plot per 'file' occurrence. If the provided filtering criteria is None, no
     # filter will be used
-    
+
     if datetime_column not in packets_df:
         packets_df[datetime_column] = pd.to_datetime(packets_df[timestamp_column], unit='s')
 
@@ -192,19 +195,19 @@ def generate_shape_for_protocol(df, protocol, color, y_axis):
     try:
         first_and_last_rows = df[df['protocol'] == protocol].iloc[[0, -1]]
         return {
-                    'type': 'rect',
-                    'xref': 'paper',
-                    'yref': y_axis,
-                    'x0': 0,
-                    'x1': 1,
-                    'y0': first_and_last_rows.iloc[0]['summary'],
-                    'y1': first_and_last_rows.iloc[-1]['summary'],
-                    'fillcolor': color,
-                    'opacity': 0.3,
-                    'line': {
-                        'width': 0,
-                    }
-                }
+            'type': 'rect',
+            'xref': 'paper',
+            'yref': y_axis,
+            'x0': 0,
+            'x1': 1,
+            'y0': first_and_last_rows.iloc[0]['summary'],
+            'y1': first_and_last_rows.iloc[-1]['summary'],
+            'fillcolor': color,
+            'opacity': 0.3,
+            'line': {
+                'width': 0,
+            }
+        }
     except:
         # Case where there are no such eintries
         return None
@@ -213,8 +216,9 @@ def generate_shape_for_protocol(df, protocol, color, y_axis):
 def get_protocol_shapes(packets_df, y_axis='y4'):
     # Returns shapes highlighting several protocols wherever there is a summary column
     packets_df_plot = packets_df[packets_df.summary != ''].sort_values(by=["protocol", "summary"])
-    shapes = [ generate_shape_for_protocol(packets_df_plot, protocol, color, y_axis) for protocol, color in [ ('NGAP', '#8cd98c'), ('HTTP/2', '#b3b3b3'), ('PFCP', '#80b3ff')] ]
-    shapes = [ shape for shape in shapes if shape is not None ]
+    shapes = [generate_shape_for_protocol(packets_df_plot, protocol, color, y_axis) for protocol, color in
+              [('NGAP', '#8cd98c'), ('HTTP/2', '#b3b3b3'), ('PFCP', '#80b3ff')]]
+    shapes = [shape for shape in shapes if shape is not None]
     return shapes
 
 
@@ -229,7 +233,7 @@ def generate_scatterplot_for_k8s_kpis(data_to_plot, series_name, show_legend, da
         showlegend=show_legend,
         line={'color': series_color},
         text=data_text,
-        hovertemplate = '%{text}: %{y:.2f} CPU')
+        hovertemplate='%{text}: %{y:.2f} CPU')
 
 
 def compressed_pickle(title, data):
@@ -502,11 +506,12 @@ def calculate_procedure_length(packets_df, logging_level=logging.INFO):
     return procedure_df, procedure_frames
 
 
-def get_histogram_data(x, bin_size, min_x=0, density=True, remove_trailing_zeros=False, output_labels=False, label_unit=''):
+def get_histogram_data(x, bin_size, min_x=0, density=True, remove_trailing_zeros=False, output_labels=False,
+                       label_unit=''):
     # Filter out NaNs
     x = x[x.notnull()]
 
-    bins = range(min_x, int(x.max()) + 5*bin_size, bin_size)
+    bins = range(min_x, int(x.max()) + 5 * bin_size, bin_size)
     hist_array, hist_bins = np.histogram(x, bins=bins, density=density)
 
     # Remove trailing zeros
@@ -521,6 +526,6 @@ def get_histogram_data(x, bin_size, min_x=0, density=True, remove_trailing_zeros
     if not output_labels:
         return hist_array, hist_bins
 
-    hist_labels = ['{0} to {1}{2}'.format(int(max(e-bin_size/2, x.min())), int(e+bin_size/2), label_unit) for e in hist_bins]
+    hist_labels = ['{0} to {1}{2}'.format(int(max(e - bin_size / 2, x.min())), int(e + bin_size / 2), label_unit) for e
+                   in hist_bins]
     return hist_array, hist_bins, hist_labels
-

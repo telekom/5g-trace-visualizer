@@ -2,6 +2,7 @@ import json
 import traceback
 import dateutil.parser
 
+
 def load_json_file(filename):
     d = get_k8s_json_kpi_dict()
 
@@ -11,6 +12,7 @@ def load_json_file(filename):
         add_k8s_json_k8s_kpis_to_dict(line, d)
 
     return d
+
 
 def get_k8s_json_kpi_dict():
     return {
