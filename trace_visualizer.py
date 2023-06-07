@@ -28,7 +28,10 @@ import yaml
 from lxml.etree import Element
 from packaging import version
 
+import parsing.mime_multipart
 import yaml_parser
+from parsing import mime_multipart
+from parsing.mime_multipart import mime_multipart_payload_regex
 
 application_logger = logging.getLogger()
 application_logger.setLevel(logging.DEBUG)
@@ -78,9 +81,6 @@ gtpv2_message_type_regex = re.compile(r"gtpv2\.message_type: 'Message [tT]ype: (
 http_rsp_regex = re.compile(r'status: ([\d]{3})')
 http_url_regex = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
-
-mime_multipart_payload_regex = re.compile(
-    r"(?P<header>--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+(Content-Type: (?P<content_type>[a-zA-Z0-9 \/\.]+)[\n\r]+|(Content-I[dD]: (?P<content_id>[a-zA-Z0-9 \/\.]+)[\n\r]+))+)(?P<payload>.*)")
 
 http2_string_unescape = True
 
@@ -582,30 +582,22 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             if boundary is None and len(headers) == 0:
                 data_ascii = hex_string_to_ascii(data_hex)
                 try:
-                    m_all = [m for m in mime_multipart_payload_regex.finditer(data_ascii)]
+                    m_all = parsing.mime_multipart.parse_multipart_mime(data_ascii)
                     # logging.debug(data_ascii)
 
-                    # Groups:
-                    # 0: All
-                    # 1: Full MIME multipart header
-                    # 2: Boundary
-                    # 3: MIME type
-                    # 4: Full Content ID header
-                    # 5: Actual content ID
-                    # 6: Payload
                     if len(m_all) > 0:
-                        boundary = m_all[0].group(2)
+                        boundary = m_all[0].boundary
                         # (header length, payload length)
-                        multipart_lengths = [(len(m.group('header')), len(m.group('payload'))) for m in m_all]
+                        multipart_lengths = [(len(m.header), len(m.payload)) for m in m_all]
 
                         def parse_content_id(a_str):
                             if a_str is None:
                                 return "No Content ID"
                             return a_str
 
-                        multipart_descriptions = ['{0} ({1})'.format(
-                            m.group('content_type'),
-                            parse_content_id(m.group('content_id'))) for m in m_all]
+                        multipart_descriptions = []
+                        for m in m_all:
+                            multipart_descriptions.append('/'.join(['{0}: {1}'.format(h.name, h.value) for h in m.mime_headers ]))
 
                         logging.debug(
                             'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
@@ -695,13 +687,16 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                     hex_string_to_ascii(payload_clean, return_original_if_not_json=True)
                                 )
 
+                                # TODO add 5G-NAS parsing if available
+                                # XPAth to the Content ID and return as YAML
+
                                 split_payload_clean.append(payload_clean_assembled)
                             except:
                                 logging.error(
                                     f'Error processing multipart message (idx={idx}). Multipart lengths: {multipart_lengths}. Split payload={split_payload}')
                                 traceback.print_exc()
                         data_ascii = '\n\n'.join(split_payload_clean)
-                        data_ascii = 'Parsed multipart payload (missing header?)\n\n{0}'.format(data_ascii)
+                        data_ascii = 'Parsed multipart payload (maybe no HTTP2 HEADER in frame?)\n\n{0}'.format(data_ascii)
                         # logging.debug(data_ascii)
                     except:
                         logging.debug('Could not manually parse payload')
