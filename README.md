@@ -26,6 +26,7 @@
     * [Showing only certain packets](#showing-only-certain-packets)
     * [Sharing an edited trace](#sharing-an-edited-trace)
     * [Ordering labels in a specific order](#ordering-labels-in-a-specific-order)
+    * [Missing HTTP headers and HPACK](#missing-http-headers-and-hpack)
 
 # Summary
 
@@ -384,7 +385,7 @@ Since this application works on an exported PDML file, you can just edit the gen
 
 Just search for ``<field name="num" pos="0" show="36"`` in the PDML file to go to frame 36 and edit it accordingly.
 
-Note that you odo not have to edit the parsed HTTP/2 fields but rather the ``http2.data.data`` hex payload. It is cumbersome, but since this application does HTTP/2 frame reconstruction (a data payload can span more than one HTTP/2 frame), it works with the binary payload. Just use a HEX-to-ASCII converter (e.g. [here](https://www.rapidtables.com/convert/number/hex-to-ascii.html)), edit the payload and convert it back to HEX (e.g. [here](https://www.rapidtables.com/convert/number/ascii-to-hex.html)). In this case, we will change the payloads to change ``imsi-2089300007487`` to ``imsi-XXXXXXXXXXXXX (removed)``. You can find the edited trace [here](doc/free5gc_3.2.2_edited.pdml).
+Note that you do not have to edit the parsed HTTP/2 fields but rather the ``http2.data.data`` hex payload. It is cumbersome, but since this application does HTTP/2 frame reconstruction (a data payload can span more than one HTTP/2 frame), it works with the binary payload. Just use a HEX-to-ASCII converter (e.g. [here](https://www.rapidtables.com/convert/number/hex-to-ascii.html)), edit the payload and convert it back to HEX (e.g. [here](https://www.rapidtables.com/convert/number/ascii-to-hex.html)). In this case, we will change the payloads to change ``imsi-2089300007487`` to ``imsi-XXXXXXXXXXXXX (removed)``. You can find the edited trace [here](doc/free5gc_3.2.2_edited.pdml).
 
 The same for frame 38. The output can be seen below
 ![free5GC plain](doc/examples/free5gc_3.2.2_imsi_edited.PNG)
@@ -404,6 +405,16 @@ Maybe some editing features will be added in the feature, but will depend on whe
 ### Ordering labels in a specific order
 
 Just use ``-force_order``, e.g. ``-force_order "gNB,AMF,SMF,UDM"``
+
+### Missing HTTP headers and HPACK
+
+A common issue is that a packet capture may have been started after the [HPACK](https://httpwg.org/specs/rfc7541.html) header table has been initialized, which leads to missing header entries in the packet capture.
+
+While not really an issue to be solved here, you may find it useful to know that Wireshark does apparently provide a way to inject HTTP2/GRPC headers via ``uat``.
+
+You can find some information regarding HTTP2/GRPC header injection in the [related feature request](https://gitlab.com/wireshark/wireshark/-/merge_requests/4877) and also [GRPC dissector documentation](https://gitlab.com/wireshark/wireshark/-/wikis/grpc).
+
+If you want to play around with the feature itself, it is available in the GUI also under ``Preferences``->``Protocols``->``HTTP2``, where you can find the tables that can be setup via ``uat``.
 
 ## Notes
 
