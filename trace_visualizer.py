@@ -30,8 +30,6 @@ from packaging import version
 
 import parsing.mime_multipart
 import yaml_parser
-from parsing import mime_multipart
-from parsing.mime_multipart import mime_multipart_payload_regex
 
 application_logger = logging.getLogger()
 application_logger.setLevel(logging.DEBUG)
@@ -489,15 +487,6 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                           header[0] == 'content-type' and 'multipart/related' in header[1]]
 
     boundary = None
-    boundary_scan = False
-    if len(multipart_content_type_headers) > 0:
-        try:
-            split_headers = [header[1].split(';') for header in multipart_content_type_headers]
-            boundaries = [header[-1].split('=')[-1] for header in split_headers]
-            boundary = boundaries[-1]  # Only one boundary per header supported
-            boundary_dict[stream_id] = boundary
-        except:
-            pass
 
     # Return None if there are not headers and the data is reassembled later on (just a data fragment)
     # Save fragment for later reassembly
@@ -513,10 +502,6 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
 
     data_ascii = ''
     json_data = False
-    if stream_id in boundary_dict:
-        boundary = boundary_dict[stream_id]
-    else:
-        boundary = None
 
     if (data is not None) and ((reassembly_frame == frame_number) or (former_fragments is not None)):
         try:
@@ -541,8 +526,12 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             data_hex = prior_data + current_data
             multipart_lengths = []
 
-            def hex_string_to_ascii(http_data_as_hexstring, remove_content_type=False,
-                                    return_original_if_not_json=False):
+            def hex_string_to_ascii(
+                    http_data_as_hexstring,
+                    remove_content_type=False,
+                    return_original_if_not_json=False,
+                    try_json_formatting=True
+            ):
                 http_data_as_hex = bytearray.fromhex(http_data_as_hexstring)
                 ascii_str = ''
                 try:
@@ -550,6 +539,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                 except:
                     ascii_str = http_data_as_hex.decode('utf_8', errors="ignore")
 
+                # If we do not clean up these characters, PlantUML won't be able to display the text
                 if ascii_str != '':
                     # Cleanup non-printable characters
                     cleaned_ascii_str = ascii_non_printable.sub(' ', ascii_str)
@@ -559,6 +549,10 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                         to_remove = 'Content-Type: application/json'
                         if ascii_str.startswith(to_remove):
                             ascii_str = ascii_str[len(to_remove):]
+
+                if not try_json_formatting:
+                    return ascii_str
+
                 try:
                     # If JSON, format nicely
                     parsed_json = json.loads(ascii_str)
@@ -571,16 +565,21 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
 
                     ascii_str = json.dumps(parsed_json, indent=2, sort_keys=False)
                     json_data = True
-                except:
-                    logging.debug('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
+                except Exception as e:
+                    logging.debug(
+                        'Frame {0}: could not parse HTTP/2 payload data as JSON. Parsed string: "{1}" and found error: "{2}"'.format(
+                            frame_number, ascii_str, str(e)))
                     if return_original_if_not_json:
                         return http_data_as_hexstring
+                    traceback.print_stack()
                 return ascii_str
 
             # Try to auto-detect MIME multipart payloads in packets with no HTTP/2 headers (e.g. headers sent in another
-            # packet
+            # packet.
+            # Since the boundary data is anyway in the HEADERS frame in the packet, we would not be able to read it
+            # while in the DATA frame, so I made this part independent of the boundary variable
             if boundary is None and len(headers) == 0:
-                data_ascii = hex_string_to_ascii(data_hex)
+                data_ascii = hex_string_to_ascii(data_hex, try_json_formatting=False)
                 try:
                     m_all = parsing.mime_multipart.parse_multipart_mime(data_ascii)
                     # logging.debug(data_ascii)
@@ -597,7 +596,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
 
                         multipart_descriptions = []
                         for m in m_all:
-                            multipart_descriptions.append('/'.join(['{0}: {1}'.format(h.name, h.value) for h in m.mime_headers ]))
+                            multipart_descriptions.append(
+                                '\n'.join(['{0}: {1}'.format(h.name, h.value) for h in m.mime_headers]))
 
                         logging.debug(
                             'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
@@ -605,8 +605,6 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                 len(m_all),
                                 ', '.join(multipart_descriptions),
                                 len(boundary * 2)))
-                        if len(m_all) > 0:
-                            boundary_scan = False
                 except:
                     logging.debug('Exception searching for boundary')
                     traceback.print_exc()
@@ -626,36 +624,35 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     frame_number,
                     len(mime_parts),
                     boundary))
+                data_ascii_list = []
                 for idx, mime_part in enumerate(mime_parts):
+                    break
                     part_data = mime_part.attrib['value']
                     header = mime_part.find("field[@name='mime_multipart.header.content-type']")
                     proto_name = header.attrib['show']
                     logging.debug('Frame {0}: Part {1}: {2}'.format(frame_number, idx + 1, proto_name))
                     logging.debug('Frame {0}: Part data: {1}'.format(frame_number, part_data))
-                    # The first multipart is per spec a JSON body and typically does not have a Content ID
-                    try:
-                        content_id = mime_part.find("field[@name='mime_multipart.header.content-id']").attrib['show']
-                    except:
-                        content_id = None
-                    if idx == 0:
-                        json_msg = hex_string_to_ascii(part_data, remove_content_type=True)
-                        if content_id is None:
-                            data_ascii = '--First part: JSON:--\n{0}'.format(json_msg)
-                        else:
-                            data_ascii = '--First part: JSON. Content ID {1}:--\n{0}'.format(json_msg, content_id)
+
+                    ascii_part = hex_string_to_ascii(
+                        part_data,
+                        try_json_formatting=False)
+                    parsed_part_data = parsing.mime_multipart.parse_multipart_mime(ascii_part, single_part=True)
+                    if len(parsed_part_data) < 1:
+                        part_ascii = 'Could not parse part data: {0}'.format(part_data)
                     else:
-                        proto_name = mime_part.find("field[@name='mime_multipart.header.content-type']").attrib['show']
-                        nas_proto_element = mime_part.find("proto")
-                        proto_info = parse_nas_proto(frame_number, nas_proto_element, multipart_proto=True)
-                        data_ascii = '{0}\n\n--Next part: {1}. Content ID: {2}--\nData:{3}\n{4}'.format(data_ascii,
-                                                                                                        proto_name,
-                                                                                                        content_id,
-                                                                                                        part_data,
-                                                                                                        proto_info)
-                if boundary is not None and boundary_scan:
+                        parsed_part_data = parsed_part_data[0]
+                        headers = '\n'.join(['{0}: {1}'.format(h.name, h.value) for h in parsed_part_data.mime_headers])
+                        part_ascii = '--Part {0}\n'.format(idx) + headers + '\n' + parsed_part_data.payload
+                    data_ascii_list.append(part_ascii)
+                data_ascii = '\n\n'.join(data_ascii_list)
+                data_ascii = ''
+
+                # Use always boundary scan because it works quite well now
+                if boundary is not None:
                     logging.debug(
-                        'Manual boundary parsing (maybe missing header due to HPACK?). Using boundary {0} (0x{1})'.format(
+                        'Manual boundary parsing. Using boundary {0} (0x{1})'.format(
                             boundary, boundary_hex))
+
                     try:
                         logging.debug(
                             'Total payload length: {0} bytes, {1} characters. Length: {2}'.format(
@@ -693,7 +690,8 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                     f'Error processing multipart message (idx={idx}). Multipart lengths: {multipart_lengths}. Split payload={split_payload}')
                                 traceback.print_exc()
                         data_ascii = '\n\n'.join(split_payload_clean)
-                        data_ascii = 'Parsed multipart payload (maybe no HTTP2 HEADER in frame?)\n\n{0}'.format(data_ascii)
+                        data_ascii = 'Parsed multipart payload by parsing payload\nBoundary: {1}\n\n{0}'.format(
+                            data_ascii, boundary)
                         # logging.debug(data_ascii)
                     except:
                         logging.debug('Could not manually parse payload')
@@ -2093,7 +2091,7 @@ if __name__ == '__main__':
         args.show_selfmessages,
         custom_packet_filter=args.custom_packet_filter,
         custom_packet_filter_ip_labels=(
-        args.custom_ip_src, args.custom_ip_src_attribute, args.custom_ip_dst, args.custom_ip_dst_attribute)
+            args.custom_ip_src, args.custom_ip_src_attribute, args.custom_ip_dst, args.custom_ip_dst_attribute)
     )
 
     if args.svg:

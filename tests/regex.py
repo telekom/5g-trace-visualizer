@@ -3,57 +3,6 @@ import unittest
 import parsing.mime_multipart
 
 
-class test_multipart_mime(unittest.TestCase):
-    def test_boundary1(self):
-        packet_text = """--gc0pJq08jU534c
-Content-Type: application/vnd.3gpp.ngap
-Content-Id: n2ContentId1"""
-        match = parsing.mime_multipart.mime_multipart_payload_regex.match(packet_text)
-        self.assertIsNotNone(match)  # add assertion here
-        self.assertEqual(match.group(2), 'gc0pJq08jU534c')
-        self.assertEqual(match.group(3), 'application/vnd.3gpp.ngap')
-
-    def test_boundary1_named_groups(self):
-        packet_text = """--gc0pJq08jU534c
-Content-Type: application/vnd.3gpp.ngap
-Content-Id: n2ContentId1"""
-        match = parsing.mime_multipart.mime_multipart_payload_regex.match(packet_text)
-        self.assertIsNotNone(match)  # add assertion here
-        self.assertEqual(match.group('boundary'), 'gc0pJq08jU534c')
-        self.assertEqual(match.group('content_type'), 'application/vnd.3gpp.ngap')
-
-    def test_boundary1_named_groups_2(self):
-        packet_text = """--gc0pJq08jU534c
-Content-Type: application/json
-
-{"n1MessageContainer":"""
-        match = parsing.mime_multipart.mime_multipart_payload_regex.match(packet_text)
-        self.assertIsNotNone(match)  # add assertion here
-        self.assertEqual(match.group('boundary'), 'gc0pJq08jU534c')
-        self.assertEqual(match.group('content_type'), 'application/json')
-
-    def test_boundary1_named_groups_3(self):
-        packet_text = """--gc0pJq08jU534c
-Content-Type: application/vnd.3gpp.5gnas
-Content-Id: n1ContentId1
-
-"""
-        match = parsing.mime_multipart.mime_multipart_payload_regex.match(packet_text)
-        self.assertIsNotNone(match)  # add assertion here
-        self.assertEqual(match.group('boundary'), 'gc0pJq08jU534c')
-        self.assertEqual(match.group('content_type'), 'application/vnd.3gpp.5gnas')
-        self.assertEqual(match.group('content_id'), 'n1ContentId1')
-
-    def test_boundary2_named_groups(self):
-        packet_text = """--oiH7UJCrm4vEWMX70dIsiqFSAYBdme6zn39WMZftu_1_M9D80Ajho1cTLSIkMVSC
-Content-Type: application/vnd.3gpp.ngap
-Content-Id: n2ContentId1"""
-        match = parsing.mime_multipart.mime_multipart_payload_regex.match(packet_text)
-        self.assertIsNotNone(match)  # add assertion here
-        self.assertEqual(match.group('boundary'), 'oiH7UJCrm4vEWMX70dIsiqFSAYBdme6zn39WMZftu_1_M9D80Ajho1cTLSIkMVSC')
-        self.assertEqual(match.group('content_type'), 'application/vnd.3gpp.ngap')
-
-
 class test_multipart_mime_v2(unittest.TestCase):
     def test_no_payload(self):
         packet_text = """--gc0pJq08jU534c
@@ -148,6 +97,48 @@ Test payload"""
         self.assertEqual(msg.payload, 'Test payload')
         self.assertEqual(msg.mime_headers[0].name, 'Content-Type')
         self.assertEqual(msg.mime_headers[0].value, 'test')
+
+    def test_with_single_part_none(self):
+        packet_text = """--gc0pJq08jU534c
+Content-Type: application/vnd.3gpp.ngap
+Content-Id: n2ContentId1
+
+{"n1MessageContainer":"""
+        msg = parsing.mime_multipart.parse_multipart_mime(packet_text, single_part=True)
+
+    def test_with_single_part_1(self):
+        packet_text = """Content-Type: application/vnd.3gpp.ngap
+Content-Id: n2ContentId1
+
+{"n1MessageContainer":"""
+        msg = parsing.mime_multipart.parse_multipart_mime(packet_text, single_part=True)[0]
+        print(msg)
+        self.assertIsNotNone(msg)  # add assertion here
+        self.assertEqual(msg.boundary, None)
+        self.assertEqual(msg.payload, '{"n1MessageContainer":')
+        self.assertEqual(msg.mime_headers[0].name, 'Content-Type')
+        self.assertEqual(msg.mime_headers[0].value, 'application/vnd.3gpp.ngap')
+        self.assertEqual(msg.mime_headers[1].name, 'Content-Id')
+        self.assertEqual(msg.mime_headers[1].value, 'n2ContentId1')
+
+    def test_with_single_part_2(self):
+        packet_text = """Content-Type: application/json
+Content-ID: json
+Content-Transfer-Encoding: string
+
+{"hoState":"PREPARING","n2SmInfo":{"contentId":"PduSessionResourceSetupRequestTransfer"},"n2SmInfoType":"PDU_RES_SETUP_REQ"}"""
+        msg = parsing.mime_multipart.parse_multipart_mime(packet_text, single_part=True)[0]
+        print(msg)
+        self.assertIsNotNone(msg)  # add assertion here
+        self.assertEqual(msg.boundary, None)
+        self.assertEqual(msg.payload,
+                         '{"hoState":"PREPARING","n2SmInfo":{"contentId":"PduSessionResourceSetupRequestTransfer"},"n2SmInfoType":"PDU_RES_SETUP_REQ"}')
+        self.assertEqual(msg.mime_headers[0].name, 'Content-Type')
+        self.assertEqual(msg.mime_headers[0].value, 'application/json')
+        self.assertEqual(msg.mime_headers[1].name, 'Content-Id')
+        self.assertEqual(msg.mime_headers[1].value, 'json')
+        self.assertEqual(msg.mime_headers[2].name, 'Content-Transfer-Encoding')
+        self.assertEqual(msg.mime_headers[2].value, 'string')
 
 
 if __name__ == '__main__':
