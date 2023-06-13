@@ -24,6 +24,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Pattern, Tuple
 
+import lxml.etree
 import yaml
 from lxml.etree import Element
 from packaging import version
@@ -371,7 +372,12 @@ def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
     return True
 
 
-def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
+def parse_http_proto(
+        frame_number,
+        el: Element,
+        ignorehttpheaders_list,
+        ignore_spurious_tcp_retransmissions,
+        packet: Element):
     if not isinstance(el, list):
         return parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions,
                                    packet)
@@ -382,7 +388,11 @@ def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_t
     return '\n'.join(all_json)
 
 
-def parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
+def parse_http_proto_el(
+        frame_number, el: Element,
+        ignorehttpheaders_list,
+        ignore_spurious_tcp_retransmissions,
+        packet: Element):
     # Option to ignore TCP spurious retransmissions
     try:
         if ignore_spurious_tcp_retransmissions:
@@ -449,7 +459,12 @@ def format_http2_line_breaks(e):
     return e
 
 
-def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, http2_proto_el, boundary_dict):
+def parse_http_proto_stream(
+        frame_number,
+        stream_el: Element,
+        ignorehttpheaders_list,
+        http2_proto_el: Element,
+        boundary_dict):
     stream_id_el = stream_el.find("field[@name='http2.streamid']")
     if stream_id_el is None:
         return None
@@ -478,24 +493,17 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
     fragmented_packet = reassembly_frame is not None
 
     header_list = []
-    multipart_content_type_headers = []
     if len(headers) > 0:
         header_list.append(('HTTP/2 stream', '{0}'.format(stream_id)))
         header_list.extend([(header.find("field[@name='http2.header.name']").attrib["show"],
                              header.find("field[@name='http2.header.value']").attrib["show"]) for header in headers])
-        multipart_content_type_headers = [header for header in header_list if
-                                          header[0] == 'content-type' and 'multipart/related' in header[1]]
 
     boundary = None
 
-    # Return None if there are not headers and the data is reassembled later on (just a data fragment)
+    # Return None if there are no headers and the data is reassembled later on (just a data fragment)
     # Save fragment for later reassembly
-    added_current_fragment_to_cache = False
     if reassembly_frame is not None:
         added_current_fragment_to_cache = add_http2_fragment(reassembly_frame, stream_id, data, frame_number)
-        if not added_current_fragment_to_cache:
-            logging.debug(
-                'Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
     else:
         # No reassembly
         reassembly_frame = frame_number
@@ -581,6 +589,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             if boundary is None and len(headers) == 0:
                 data_ascii = hex_string_to_ascii(data_hex, try_json_formatting=False)
                 try:
+                    # Parses the ASCII-converted frame and returns a list of MIME multipart messages that it found
                     m_all = parsing.mime_multipart.parse_multipart_mime(data_ascii)
                     # logging.debug(data_ascii)
 
@@ -595,9 +604,13 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                             return a_str
 
                         multipart_descriptions = []
+                        multipart_ids = []
                         for m in m_all:
+                            # We need this to properly display the message content
                             multipart_descriptions.append(
                                 '\n'.join(['{0}: {1}'.format(h.name, h.value) for h in m.mime_headers]))
+                            # We need this to search (if present) add already-dissected protocol data
+                            multipart_ids.append(parsing.mime_multipart.find_header('Content-Id', m))
 
                         logging.debug(
                             'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
@@ -624,27 +637,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     frame_number,
                     len(mime_parts),
                     boundary))
-                data_ascii_list = []
-                for idx, mime_part in enumerate(mime_parts):
-                    break
-                    part_data = mime_part.attrib['value']
-                    header = mime_part.find("field[@name='mime_multipart.header.content-type']")
-                    proto_name = header.attrib['show']
-                    logging.debug('Frame {0}: Part {1}: {2}'.format(frame_number, idx + 1, proto_name))
-                    logging.debug('Frame {0}: Part data: {1}'.format(frame_number, part_data))
 
-                    ascii_part = hex_string_to_ascii(
-                        part_data,
-                        try_json_formatting=False)
-                    parsed_part_data = parsing.mime_multipart.parse_multipart_mime(ascii_part, single_part=True)
-                    if len(parsed_part_data) < 1:
-                        part_ascii = 'Could not parse part data: {0}'.format(part_data)
-                    else:
-                        parsed_part_data = parsed_part_data[0]
-                        headers = '\n'.join(['{0}: {1}'.format(h.name, h.value) for h in parsed_part_data.mime_headers])
-                        part_ascii = '--Part {0}\n'.format(idx) + headers + '\n' + parsed_part_data.payload
-                    data_ascii_list.append(part_ascii)
-                data_ascii = '\n\n'.join(data_ascii_list)
                 data_ascii = ''
 
                 # Use always boundary scan because it works quite well now
@@ -679,11 +672,34 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                     return s
 
                                 payload_clean = rchop(payload_clean, '0d0a')
-                                payload_clean_assembled = '{0}\n{1}'.format(
+
+                                # See if we can find a dissected protocol under this ID
+                                # XPath query: //proto[@name='mime_multipart']//field[@name='mime_multipart.header.content-id' and @show='n1SmMsg']/../proto
+                                dissected_protocol_text = ''
+                                try:
+                                    # Search for an existing parsed protocol (may or may not be present)
+                                    # Needed to adapt th eXPath query because LXML only supports a subset, see
+                                    # https://docs.python.org/3/library/xml.etree.elementtree.html#xpath-support
+                                    matching_mime_multipart_proto = http2_proto_el.find(
+                                        ".//field[@name='mime_multipart.header.content-id'][@show='{0}']/../proto".format(
+                                            multipart_ids[idx]
+                                        ))
+                                    dissected_protocol_text = '\n\nParsed protocol data:\n' + yaml.dump(xml2json(matching_mime_multipart_proto), indent=4, width=1000, sort_keys=False)
+                                except:
+                                    logging.debug('Frame {0}: Dissected protocol not found'.format(frame_number))
+                                    traceback.print_exc()
+
+                                # Final assembly of display text
+                                payload_clean_assembled = '{0}\n{1}{2}'.format(
                                     multipart_descriptions[idx],
-                                    hex_string_to_ascii(payload_clean, return_original_if_not_json=True)
+                                    hex_string_to_ascii(payload_clean, return_original_if_not_json=True),
+                                    dissected_protocol_text
                                 )
 
+                                # This text may contain text such as:
+                                # Content-Type: application/vnd.3gpp.5gnas
+                                # Content-Id: n1ContentId1
+                                # 2e0501c211000901000631310101fe05061000041000042905010a0a0ae0220101790006052041010105250c0b6d7763356764656d6f6474
                                 split_payload_clean.append(payload_clean_assembled)
                             except:
                                 logging.error(

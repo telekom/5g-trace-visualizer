@@ -471,9 +471,23 @@ python trace_visualizer.py -wireshark 4.0.5 -limit 70 -show_timestamp True -cust
 Which generates the following output:
 ![one_packet_diagram](doc/examples/one_packet_4.0.5.svg)
 
+Do note that in this case, the NAS protocol is shown because Wireshark did indeed decode the NAS message in the MIME multipart payload.
+
+For traces where the data was not decoded, such as [this one](doc/examples/Service Request Connected_205_210.pcap), the decoded protocol is not shown.
+
+In this specific example, Wireshark could not detect the multipart messages because the header with the boundary information was compressed with HPACK and
+the table entry was not present in the capture. While for JSON the formatting is done automatically (just some pretty formatting, after all), for binary protocols such as JSON,
+no decoding is implemented here.
+
+``
+python trace_visualizer.py -wireshark 4.0.5 -http2ports "65413,65428,65438,65440,65457,65462,65495,65482,65501,65504,65512,65514,65521,65528,31382,8080,34385" -show_timestamp True "<path>\Service Request Connected_205_210.pcap"
+``
+
+![Service Request Connected_205_210](doc/examples/Service Request Connected_205_210_4.0.5.svg)
+
 ## Notes
 
 There may be some issues with HTTP/2 frame fragment reconstruction, so drop me a line if you find some issues.
 
-For MIME Multipart messages that are not JSON, the diagrams show the binary content in hex form. In some cases, Wireshark can show NAS content within a MIME Multipart, which is not shown here.
-It was a conscious decision to do it like this for now. If I find time for it, I may add some code to take (if existing) the parsed NAS message :) It may be useful for cases where the ``n1n2`` message is encrypted and the SBI trace is not.
+For MIME Multipart messages that are not JSON, the diagrams show the binary content in hex form and (if Wireshark dissectors decoded the data),
+any present decoded protocol.
