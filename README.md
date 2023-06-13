@@ -473,7 +473,7 @@ Which generates the following output:
 
 Do note that in this case, the NAS protocol is shown because Wireshark did indeed decode the NAS message in the MIME multipart payload.
 
-For traces where the data was not decoded, such as [this one](doc/examples/Service Request Connected_205_210.pcap), the decoded protocol is not shown.
+For traces where the data was not decoded, such as [this one](doc/examples/Service%20Request%20Connected_205_210.pcap), the decoded protocol is not shown.
 
 In this specific example, Wireshark could not detect the multipart messages because the header with the boundary information was compressed with HPACK and
 the table entry was not present in the capture. While for JSON the formatting is done automatically (just some pretty formatting, after all), for binary protocols such as JSON,
@@ -483,7 +483,7 @@ no decoding is implemented here.
 python trace_visualizer.py -wireshark 4.0.5 -http2ports "65413,65428,65438,65440,65457,65462,65495,65482,65501,65504,65512,65514,65521,65528,31382,8080,34385" -show_timestamp True "<path>\Service Request Connected_205_210.pcap"
 ``
 
-![Service Request Connected_205_210](doc/examples/Service Request Connected_205_210_4.0.5.svg)
+![Service Request Connected_205_210](doc/examples/Service%20Request%20Connected_205_210_4.0.5.svg)
 
 ## Notes
 
