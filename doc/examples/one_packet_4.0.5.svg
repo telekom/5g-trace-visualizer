@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="1313px" preserveAspectRatio="none" style="width:1196px;height:1313px;" version="1.1" viewBox="0 0 1196 1313" width="1196px" zoomAndPan="magnify"><defs/><g><line style="stroke: #000000; stroke-width: 1.0; stroke-dasharray: 5.0,5.0;" x1="68" x2="68" y1="53.2188" y2="1254.1797"/><line style="stroke: #000000; stroke-width: 1.0; stroke-dasharray: 5.0,5.0;" x1="329.5" x2="329.5" y1="53.2188" y2="1254.1797"/><rect fill="#E6E6E6" height="49.2188" style="stroke: #FFFFFF; stroke-width: 1.5;" width="121" x="8" y="3"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="107" x="15" y="24.5332">nsmf-pdusession</text><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="102" x="17.5" y="42.1426">(10.206.108.92)</text><rect fill="#E6E6E6" height="49.2188" style="stroke: #FFFFFF; stroke-width: 1.5;" width="121" x="8" y="1253.1797"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="107" x="15" y="1274.7129">nsmf-pdusession</text><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="102" x="17.5" y="1292.3223">(10.206.108.92)</text><rect fill="#E6E6E6" height="31.6094" style="stroke: #FFFFFF; stroke-width: 1.5;" width="106" x="276.5" y="20.6094"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="92" x="283.5" y="42.1426">10.206.108.65</text><rect fill="#E6E6E6" height="31.6094" style="stroke: #FFFFFF; stroke-width: 1.5;" width="106" x="276.5" y="1253.1797"/><text fill="#000000" font-family="sans-serif" font-size="14" lengthAdjust="spacingAndGlyphs" textLength="92" x="283.5" y="1274.7129">10.206.108.65</text><polygon fill="#000000" points="79.5,673.2266,69.5,677.2266,79.5,681.2266,75.5,677.2266" style="stroke: #000000; stroke-width: 1.0;"/><line style="stroke: #000000; stroke-width: 1.0;" x1="73.5" x2="328.5" y1="677.2266" y2="677.2266"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="84" x="85.5" y="639.667">1, HTTP/2 req.</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="237" x="85.5" y="656.0186">POST  /nsmf-pdusession/v1/sm-contexts</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="145" x="85.5" y="672.3701">+0.000s (10:47:52.122.0)</text><path d="M334,68.2188 L334,1238.2188 L1184,1238.2188 L1184,78.2188 L1174,68.2188 L334,68.2188 " fill="#B3B3B3" style="stroke: #FFFFFF; stroke-width: 1.0;"/><path d="M1174,68.2188 L1174,78.2188 L1184,78.2188 L1174,68.2188 " fill="#B3B3B3" style="stroke: #FFFFFF; stroke-width: 1.0;"/><text fill="#000000" font-family="sans-serif" font-size="13" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="184" x="340" y="86.7139">10.206.108.65 to 10.206.108.92</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="109" x="340" y="103.0654">HTTP/2 stream: 89</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="80" x="340" y="119.417">:scheme: http</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="231" x="340" y="135.7686">:path: /nsmf-pdusession/v1/sm-contexts</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="90" x="340" y="152.1201">:method: POST</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="176" x="340" y="168.4717">:authority: 10.206.108.92:7070</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="722" x="340" y="184.8232">content-type: multipart/related; boundary=oiH7UJCrm4vEWMX70dIsiqFSAYBdme6zn39WMZftu_1_M9D80Ajho1cTLSIkMVSC</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="118" x="340" y="201.1748">content-length: 1156</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="0" x="344" y="217.5264"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="154" x="340" y="233.8779">HTTP/2 stream 89 payload</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="257" x="340" y="250.2295">Parsed multipart payload by parsing payload</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="543" x="340" y="266.5811">Boundary: oiH7UJCrm4vEWMX70dIsiqFSAYBdme6zn39WMZftu_1_M9D80Ajho1cTLSIkMVSC</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="0" x="344" y="282.9326"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="175" x="340" y="299.2842">Content-Type: application/json</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="4" x="340" y="315.6357">{</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="189" x="348" y="331.9873">"supi": "imsi-520038000000001",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="167" x="348" y="348.3389">"unauthenticatedSupi": false,</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="201" x="348" y="364.6904">"pei": "imeisv-1234000000230901",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="179" x="348" y="381.042">"gpsi": "msisdn-66943000001",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="107" x="348" y="397.3936">"pduSessionId": 5,</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="111" x="348" y="413.7451">"dnn": "internet.er",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="62" x="348" y="430.0967">"sNssai": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="43" x="356" y="446.4482">"sst": 1</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="348" y="462.7998">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="326" x="348" y="479.1514">"servingNfId": "5314d1a4-8015-445f-89a1-1f435529b2c0",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="57" x="348" y="495.5029">"guami": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="60" x="356" y="511.8545">"plmnId": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="78" x="364" y="528.2061">"mcc": "520",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="67" x="364" y="544.5576">"mnc": "03"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="356" y="560.9092">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="101" x="356" y="577.2607">"amfId": "809101"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="348" y="593.6123">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="109" x="348" y="609.9639">"servingNetwork": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="78" x="356" y="626.3154">"mcc": "520",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="67" x="356" y="642.667">"mnc": "03"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="348" y="659.0186">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="213" x="348" y="675.3701">"requestType": "INITIAL_REQUEST",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="81" x="348" y="691.7217">"n1SmMsg": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="140" x="356" y="708.0732">"contentId": "n1SmMsg"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="348" y="724.4248">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="170" x="348" y="740.7764">"anType": "3GPP_ACCESS",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="93" x="348" y="757.1279">"ratType": "NR",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="85" x="348" y="773.4795">"ueLocation": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="82" x="356" y="789.8311">"nrLocation": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="36" x="364" y="806.1826">"tai": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="60" x="372" y="822.5342">"plmnId": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="78" x="380" y="838.8857">"mcc": "520",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="67" x="380" y="855.2373">"mnc": "03"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="372" y="871.5889">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="88" x="372" y="887.9404">"tac": "009002"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="364" y="904.292">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="46" x="364" y="920.6436">"ncgi": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="60" x="372" y="936.9951">"plmnId": {</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="78" x="380" y="953.3467">"mcc": "520",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="67" x="380" y="969.6982">"mnc": "03"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="372" y="986.0498">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="138" x="372" y="1002.4014">"nrCellId": "003E007C7"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="364" y="1018.7529">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="283" x="364" y="1035.1045">"ueLocationTimestamp": "2023-04-26T08:47:52Z"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="4" x="356" y="1051.4561">}</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="8" x="348" y="1067.8076">},</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="142" x="348" y="1084.1592">"ueTimeZone": "+07:00",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="821" x="348" y="1100.5107">"smContextStatusUri": "http://10.206.108.65:8080/callbacks/nsmf-pdusession/v1/imsi-520038000000001/sm-contexts/-576460752302638364",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="140" x="348" y="1116.8623">"selMode": "VERIFIED",</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="172" x="348" y="1133.2139">"epsInterworkingInd": "NONE"</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="4" x="340" y="1149.5654">}</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="0" x="344" y="1165.917"/><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="126" x="340" y="1182.2686">Content-Id: n1SmMsg</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="241" x="340" y="1198.6201">Content-Type: application/vnd.3gpp.5gnas</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="84" x="340" y="1214.9717">2e0501c10000</text><text fill="#000000" font-family="sans-serif" font-size="13" lengthAdjust="spacingAndGlyphs" textLength="0" x="344" y="1231.3232"/><!--MD5=[8eba621878aa21390b3beda23eb5255b]
+@startuml
+skinparam shadowing false
+skinparam NoteBorderColor white
+skinparam sequence {
+    ArrowColor black
+    LifeLineBorderColor black
+    LifeLineBackgroundColor black
+    ParticipantBorderColor white
+    ParticipantBackgroundColor #e6e6e6
+}
+participant "nsmf-pdusession\n(10.206.108.92)" as 10.206.108.92
+participant "10.206.108.65"
+
+"10.206.108.65" -> "10.206.108.92": 1, HTTP/2 req.\nPOST  /nsmf-pdusession/v1/sm-contexts\n+0.000s (10:47:52.122.0)
+
+note right #b3b3b3
+**10.206.108.65 to 10.206.108.92**
+HTTP/2 stream: 89
+:scheme: http
+:path: /nsmf-pdusession/v1/sm-contexts
+:method: POST
+:authority: 10.206.108.92:7070
+content-type: multipart/related; boundary=oiH7UJCrm4vEWMX70dIsiqFSAYBdme6zn39WMZftu_1_M9D80Ajho1cTLSIkMVSC
+content-length: 1156
+
+HTTP/2 stream 89 payload
+Parsed multipart payload by parsing payload
+Boundary: oiH7UJCrm4vEWMX70dIsiqFSAYBdme6zn39WMZftu_1_M9D80Ajho1cTLSIkMVSC
+
+Content-Type: application/json
+{
+  "supi": "imsi-520038000000001",
+  "unauthenticatedSupi": false,
+  "pei": "imeisv-1234000000230901",
+  "gpsi": "msisdn-66943000001",
+  "pduSessionId": 5,
+  "dnn": "internet.er",
+  "sNssai": {
+    "sst": 1
+  },
+  "servingNfId": "5314d1a4-8015-445f-89a1-1f435529b2c0",
+  "guami": {
+    "plmnId": {
+      "mcc": "520",
+      "mnc": "03"
+    },
+    "amfId": "809101"
+  },
+  "servingNetwork": {
+    "mcc": "520",
+    "mnc": "03"
+  },
+  "requestType": "INITIAL_REQUEST",
+  "n1SmMsg": {
+    "contentId": "n1SmMsg"
+  },
+  "anType": "3GPP_ACCESS",
+  "ratType": "NR",
+  "ueLocation": {
+    "nrLocation": {
+      "tai": {
+        "plmnId": {
+          "mcc": "520",
+          "mnc": "03"
+        },
+        "tac": "009002"
+      },
+      "ncgi": {
+        "plmnId": {
+          "mcc": "520",
+          "mnc": "03"
+        },
+        "nrCellId": "003E007C7"
+      },
+      "ueLocationTimestamp": "2023-04-26T08:47:52Z"
+    }
+  },
+  "ueTimeZone": "+07:00",
+  "smContextStatusUri": "http://10.206.108.65:8080/callbacks/nsmf-pdusession/v1/imsi-520038000000001/sm-contexts/-576460752302638364",
+  "selMode": "VERIFIED",
+  "epsInterworkingInd": "NONE"
+}
+
+Content-Id: n1SmMsg
+Content-Type: application/vnd.3gpp.5gnas
+2e0501c10000
+
+end note
+
+@enduml
+
+PlantUML version 1.2019.12(Sun Nov 03 11:24:54 CET 2019)
+(APACHE source distribution)
+Java Runtime: OpenJDK Runtime Environment
+JVM: OpenJDK 64-Bit Server VM
+Java Version: 1.8.0_345-b01
+Operating System: Windows 10
+Default Encoding: Cp1252
+Language: de
+Country: AT
+--></g></svg>
