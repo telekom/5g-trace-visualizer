@@ -43,6 +43,24 @@ Content-Type: application/vnd.3gpp.ngap"""
         self.assertEqual(msg.mime_headers[0].name, 'Content-Id')
         self.assertEqual(msg.mime_headers[0].value, 'n2ContentId1')
 
+    def test_find_existing_header(self):
+        packet_text = """--gc0pJq08jU534c
+Content-Id: n2ContentId1
+Content-Type: application/vnd.3gpp.ngap"""
+        msg = parsing.mime_multipart.parse_multipart_mime(packet_text)[0]
+        self.assertIsNotNone(msg)  # add assertion here
+        found_header = parsing.mime_multipart.find_header('Content-Id', msg)
+        self.assertEqual(found_header, 'n2ContentId1')
+
+    def test_find_non_existing_header(self):
+        packet_text = """--gc0pJq08jU534c
+Content-Id: n2ContentId1
+Content-Type: application/vnd.3gpp.ngap"""
+        msg = parsing.mime_multipart.parse_multipart_mime(packet_text)[0]
+        self.assertIsNotNone(msg)  # add assertion here
+        found_header = parsing.mime_multipart.find_header('Content-test', msg)
+        self.assertEqual(found_header, '')
+
     def test_capitalization2(self):
         packet_text = """--gc0pJq08jU534c
 Content-Type: application/vnd.3gpp.ngap
