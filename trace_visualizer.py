@@ -1883,17 +1883,26 @@ def call_wireshark_for_one_version(
     return output_file
 
 
-def output_files_as_svg(output_files):
+def output_files_as_file(output_files, output_type: str = "svg"):
+    """
+    Outputs a UML diagram file by calling PlantUML
+    :param output_type: A string specifying the output type. See https://plantuml.com/command-line#458de91d76a8569c for a list of supported types (e.g. svg, png, etc.)
+    :param output_files: The files to be processed by PlantUML
+    """
     for counter, output_file in enumerate(output_files):
         plant_uml_command = 'java -Djava.awt.headless=true -jar "{0}" "{1}"'.format(plant_uml_jar, output_file)
         if debug:
             plant_uml_command = '{0} -v'.format(plant_uml_command)
-        generate_svg = '{0} -tsvg'.format(plant_uml_command)
+        generate_svg = '{0} -t{1}'.format(plant_uml_command, output_type)
         try:
-            logging.debug('Generating SVG diagram {1}/{2}: {0}'.format(generate_svg, counter + 1, len(output_files)))
+            logging.debug('Generating {3} diagram {1}/{2}: {0}'.format(
+                generate_svg,
+                counter + 1,
+                len(output_files),
+                output_type.upper()))
             os.system(generate_svg)
         except:
-            logging.debug('Could not generate SVG diagram')
+            logging.debug('Could not generate {0} diagram'.format(output_type))
             traceback.print_exc()
 
 
@@ -1985,7 +1994,9 @@ if __name__ == '__main__':
     parser.add_argument('-limit', type=int, required=False, default=100,
                         help="Maximum number of messages to show per diagram. If more are found, several partial diagrams will be generated. Default is 150. Note that setting this value to a too big value may cause a memory crash in PlantUML")
     parser.add_argument('-svg', type=str2bool, required=False, default=True,
-                        help="Whether the PUML files should be converted to SVG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'True")
+                        help="Whether the PUML files should be converted to SVG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'True'")
+    parser.add_argument('-png', type=str2bool, required=False, default=False,
+                        help="Whether the PUML files should be converted to PNG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'False'")
     parser.add_argument('-showheartbeat', type=str2bool, required=False, default=False,
                         help='Whether to show PFCP and GTPv2 heartbeats in the diagram. Default is "False"')
     parser.add_argument('-ignore_spurious_tcp_retransmissions', type=str2bool, required=False, default=True,
@@ -2096,4 +2107,8 @@ if __name__ == '__main__':
 
     if args.svg:
         print('Converting .puml files to SVG')
-        output_files_as_svg(puml_files)
+        output_files_as_file(puml_files)
+
+    if args.png:
+        print('Converting .puml files to PNG')
+        output_files_as_file(puml_files, output_type='png')
