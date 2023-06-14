@@ -24,10 +24,12 @@ from datetime import datetime
 from enum import Enum
 from typing import Pattern, Tuple
 
+import lxml.etree
 import yaml
 from lxml.etree import Element
 from packaging import version
 
+import parsing.mime_multipart
 import yaml_parser
 
 application_logger = logging.getLogger()
@@ -78,12 +80,6 @@ gtpv2_message_type_regex = re.compile(r"gtpv2\.message_type: 'Message [tT]ype: (
 http_rsp_regex = re.compile(r'status: ([\d]{3})')
 http_url_regex = re.compile(r':path: (.*)')
 http_method_regex = re.compile(r':method: (.*)')
-
-mime_multipart_payload_regex = re.compile(
-    r"(?P<header>--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+"
-    "([cC]ontent-[tT]ype: (?P<content_type>[a-zA-Z0-9 \/\.]+)[\n\r]+|[cC]ontent-[iI][dD]: (?P<content_id>[a-zA-Z0-9 \/\._]+)[\n\r]+|[cC]ontent-[tT]ransfer-[eE]ncoding: (?P<content_encoding>[a-zA-Z0-9 \/\.]+)[\n\r]+)"
-    "+)"
-    "(?P<payload>.*)")
 
 http2_string_unescape = True
 
@@ -376,7 +372,12 @@ def add_http2_fragment(frame_number, stream_id, fragment, current_frame_number):
     return True
 
 
-def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
+def parse_http_proto(
+        frame_number,
+        el: Element,
+        ignorehttpheaders_list,
+        ignore_spurious_tcp_retransmissions,
+        packet: Element):
     if not isinstance(el, list):
         return parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions,
                                    packet)
@@ -387,7 +388,11 @@ def parse_http_proto(frame_number, el, ignorehttpheaders_list, ignore_spurious_t
     return '\n'.join(all_json)
 
 
-def parse_http_proto_el(frame_number, el, ignorehttpheaders_list, ignore_spurious_tcp_retransmissions, packet):
+def parse_http_proto_el(
+        frame_number, el: Element,
+        ignorehttpheaders_list,
+        ignore_spurious_tcp_retransmissions,
+        packet: Element):
     # Option to ignore TCP spurious retransmissions
     try:
         if ignore_spurious_tcp_retransmissions:
@@ -454,7 +459,12 @@ def format_http2_line_breaks(e):
     return e
 
 
-def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, http2_proto_el, boundary_dict):
+def parse_http_proto_stream(
+        frame_number,
+        stream_el: Element,
+        ignorehttpheaders_list,
+        http2_proto_el: Element,
+        boundary_dict):
     stream_id_el = stream_el.find("field[@name='http2.streamid']")
     if stream_id_el is None:
         return None
@@ -483,43 +493,23 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
     fragmented_packet = reassembly_frame is not None
 
     header_list = []
-    multipart_content_type_headers = []
     if len(headers) > 0:
         header_list.append(('HTTP/2 stream', '{0}'.format(stream_id)))
         header_list.extend([(header.find("field[@name='http2.header.name']").attrib["show"],
                              header.find("field[@name='http2.header.value']").attrib["show"]) for header in headers])
-        multipart_content_type_headers = [header for header in header_list if
-                                          header[0] == 'content-type' and 'multipart/related' in header[1]]
 
     boundary = None
-    boundary_scan = False
-    if len(multipart_content_type_headers) > 0:
-        try:
-            split_headers = [header[1].split(';') for header in multipart_content_type_headers]
-            boundaries = [header[-1].split('=')[-1] for header in split_headers]
-            boundary = boundaries[-1]  # Only one boundary per header supported
-            boundary_dict[stream_id] = boundary
-        except:
-            pass
 
-    # Return None if there are not headers and the data is reassembled later on (just a data fragment)
+    # Return None if there are no headers and the data is reassembled later on (just a data fragment)
     # Save fragment for later reassembly
-    added_current_fragment_to_cache = False
     if reassembly_frame is not None:
         added_current_fragment_to_cache = add_http2_fragment(reassembly_frame, stream_id, data, frame_number)
-        if not added_current_fragment_to_cache:
-            logging.debug(
-                'Frame {0}: Stream {1}, could not add target reassembly frame'.format(frame_number, stream_id))
     else:
         # No reassembly
         reassembly_frame = frame_number
 
     data_ascii = ''
     json_data = False
-    if stream_id in boundary_dict:
-        boundary = boundary_dict[stream_id]
-    else:
-        boundary = None
 
     if (data is not None) and ((reassembly_frame == frame_number) or (former_fragments is not None)):
         try:
@@ -544,8 +534,12 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
             data_hex = prior_data + current_data
             multipart_lengths = []
 
-            def hex_string_to_ascii(http_data_as_hexstring, remove_content_type=False,
-                                    return_original_if_not_json=False):
+            def hex_string_to_ascii(
+                    http_data_as_hexstring,
+                    remove_content_type=False,
+                    return_original_if_not_json=False,
+                    try_json_formatting=True
+            ):
                 http_data_as_hex = bytearray.fromhex(http_data_as_hexstring)
                 ascii_str = ''
                 try:
@@ -553,6 +547,7 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                 except:
                     ascii_str = http_data_as_hex.decode('utf_8', errors="ignore")
 
+                # If we do not clean up these characters, PlantUML won't be able to display the text
                 if ascii_str != '':
                     # Cleanup non-printable characters
                     cleaned_ascii_str = ascii_non_printable.sub(' ', ascii_str)
@@ -562,6 +557,10 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                         to_remove = 'Content-Type: application/json'
                         if ascii_str.startswith(to_remove):
                             ascii_str = ascii_str[len(to_remove):]
+
+                if not try_json_formatting:
+                    return ascii_str
+
                 try:
                     # If JSON, format nicely
                     parsed_json = json.loads(ascii_str)
@@ -574,41 +573,44 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
 
                     ascii_str = json.dumps(parsed_json, indent=2, sort_keys=False)
                     json_data = True
-                except:
-                    logging.debug('Frame {0}: could not parse HTTP/2 payload data as JSON'.format(frame_number))
+                except Exception as e:
+                    logging.debug(
+                        'Frame {0}: could not parse HTTP/2 payload data as JSON. Parsed string: "{1}" and found error: "{2}"'.format(
+                            frame_number, ascii_str, str(e)))
                     if return_original_if_not_json:
                         return http_data_as_hexstring
+                    traceback.print_stack()
                 return ascii_str
 
             # Try to auto-detect MIME multipart payloads in packets with no HTTP/2 headers (e.g. headers sent in another
-            # packet
+            # packet.
+            # Since the boundary data is anyway in the HEADERS frame in the packet, we would not be able to read it
+            # while in the DATA frame, so I made this part independent of the boundary variable
             if boundary is None and len(headers) == 0:
-                data_ascii = hex_string_to_ascii(data_hex)
+                data_ascii = hex_string_to_ascii(data_hex, try_json_formatting=False)
                 try:
-                    m_all = [m for m in mime_multipart_payload_regex.finditer(data_ascii)]
+                    # Parses the ASCII-converted frame and returns a list of MIME multipart messages that it found
+                    m_all = parsing.mime_multipart.parse_multipart_mime(data_ascii)
                     # logging.debug(data_ascii)
 
-                    # Groups:
-                    # 0: All
-                    # 1: Full MIME multipart header
-                    # 2: Boundary
-                    # 3: MIME type
-                    # 4: Full Content ID header
-                    # 5: Actual content ID
-                    # 6: Payload
                     if len(m_all) > 0:
-                        boundary = m_all[0].group(2)
+                        boundary = m_all[0].boundary
                         # (header length, payload length)
-                        multipart_lengths = [(len(m.group('header')), len(m.group('payload'))) for m in m_all]
+                        multipart_lengths = [(len(m.header), len(m.payload)) for m in m_all]
 
                         def parse_content_id(a_str):
                             if a_str is None:
                                 return "No Content ID"
                             return a_str
 
-                        multipart_descriptions = ['{0} ({1})'.format(
-                            m.group('content_type'),
-                            parse_content_id(m.group('content_id'))) for m in m_all]
+                        multipart_descriptions = []
+                        multipart_ids = []
+                        for m in m_all:
+                            # We need this to properly display the message content
+                            multipart_descriptions.append(
+                                '\n'.join(['{0}: {1}'.format(h.name, h.value) for h in m.mime_headers]))
+                            # We need this to search (if present) add already-dissected protocol data
+                            multipart_ids.append(parsing.mime_multipart.find_header('Content-Id', m))
 
                         logging.debug(
                             'Found {1} MIME-multiparts by scanning payload. Boundary: "{0} ({3} bytes)".\n  Parts found: {2}'.format(
@@ -616,8 +618,6 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                 len(m_all),
                                 ', '.join(multipart_descriptions),
                                 len(boundary * 2)))
-                        if len(m_all) > 0:
-                            boundary_scan = True
                 except:
                     logging.debug('Exception searching for boundary')
                     traceback.print_exc()
@@ -637,36 +637,15 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                     frame_number,
                     len(mime_parts),
                     boundary))
-                for idx, mime_part in enumerate(mime_parts):
-                    part_data = mime_part.attrib['value']
-                    header = mime_part.find("field[@name='mime_multipart.header.content-type']")
-                    proto_name = header.attrib['show']
-                    logging.debug('Frame {0}: Part {1}: {2}'.format(frame_number, idx + 1, proto_name))
-                    logging.debug('Frame {0}: Part data: {1}'.format(frame_number, part_data))
-                    # The first multipart is per spec a JSON body and typically does not have a Content ID
-                    try:
-                        content_id = mime_part.find("field[@name='mime_multipart.header.content-id']").attrib['show']
-                    except:
-                        content_id = None
-                    if idx == 0:
-                        json_msg = hex_string_to_ascii(part_data, remove_content_type=True)
-                        if content_id is None:
-                            data_ascii = '--First part: JSON:--\n{0}'.format(json_msg)
-                        else:
-                            data_ascii = '--First part: JSON. Content ID {1}:--\n{0}'.format(json_msg, content_id)
-                    else:
-                        proto_name = mime_part.find("field[@name='mime_multipart.header.content-type']").attrib['show']
-                        nas_proto_element = mime_part.find("proto")
-                        proto_info = parse_nas_proto(frame_number, nas_proto_element, multipart_proto=True)
-                        data_ascii = '{0}\n\n--Next part: {1}. Content ID: {2}--\nData:{3}\n{4}'.format(data_ascii,
-                                                                                                        proto_name,
-                                                                                                        content_id,
-                                                                                                        part_data,
-                                                                                                        proto_info)
-                if boundary is not None and boundary_scan:
+
+                data_ascii = ''
+
+                # Use always boundary scan because it works quite well now
+                if boundary is not None:
                     logging.debug(
-                        'Manual boundary parsing (maybe missing header due to HPACK?). Using boundary {0} (0x{1})'.format(
+                        'Manual boundary parsing. Using boundary {0} (0x{1})'.format(
                             boundary, boundary_hex))
+
                     try:
                         logging.debug(
                             'Total payload length: {0} bytes, {1} characters. Length: {2}'.format(
@@ -693,18 +672,42 @@ def parse_http_proto_stream(frame_number, stream_el, ignorehttpheaders_list, htt
                                     return s
 
                                 payload_clean = rchop(payload_clean, '0d0a')
-                                payload_clean_assembled = '{0}\n{1}'.format(
+
+                                # See if we can find a dissected protocol under this ID
+                                # XPath query: //proto[@name='mime_multipart']//field[@name='mime_multipart.header.content-id' and @show='n1SmMsg']/../proto
+                                dissected_protocol_text = ''
+                                try:
+                                    # Search for an existing parsed protocol (may or may not be present)
+                                    # Needed to adapt th eXPath query because LXML only supports a subset, see
+                                    # https://docs.python.org/3/library/xml.etree.elementtree.html#xpath-support
+                                    matching_mime_multipart_proto = http2_proto_el.find(
+                                        ".//field[@name='mime_multipart.header.content-id'][@show='{0}']/../proto".format(
+                                            multipart_ids[idx]
+                                        ))
+                                    dissected_protocol_text = '\n\nParsed protocol data:\n' + yaml.dump(xml2json(matching_mime_multipart_proto), indent=4, width=1000, sort_keys=False)
+                                except:
+                                    logging.debug('Frame {0}: Dissected protocol not found'.format(frame_number))
+                                    traceback.print_exc()
+
+                                # Final assembly of display text
+                                payload_clean_assembled = '{0}\n{1}{2}'.format(
                                     multipart_descriptions[idx],
-                                    hex_string_to_ascii(payload_clean, return_original_if_not_json=True)
+                                    hex_string_to_ascii(payload_clean, return_original_if_not_json=True),
+                                    dissected_protocol_text
                                 )
 
+                                # This text may contain text such as:
+                                # Content-Type: application/vnd.3gpp.5gnas
+                                # Content-Id: n1ContentId1
+                                # 2e0501c211000901000631310101fe05061000041000042905010a0a0ae0220101790006052041010105250c0b6d7763356764656d6f6474
                                 split_payload_clean.append(payload_clean_assembled)
                             except:
                                 logging.error(
                                     f'Error processing multipart message (idx={idx}). Multipart lengths: {multipart_lengths}. Split payload={split_payload}')
                                 traceback.print_exc()
                         data_ascii = '\n\n'.join(split_payload_clean)
-                        data_ascii = 'Parsed multipart payload (missing header?)\n\n{0}'.format(data_ascii)
+                        data_ascii = 'Parsed multipart payload by parsing payload\nBoundary: {1}\n\n{0}'.format(
+                            data_ascii, boundary)
                         # logging.debug(data_ascii)
                     except:
                         logging.debug('Could not manually parse payload')
@@ -1898,17 +1901,26 @@ def call_wireshark_for_one_version(
     return output_file
 
 
-def output_files_as_svg(output_files):
+def output_files_as_file(output_files, output_type: str = "svg"):
+    """
+    Outputs a UML diagram file by calling PlantUML
+    :param output_type: A string specifying the output type. See https://plantuml.com/command-line#458de91d76a8569c for a list of supported types (e.g. svg, png, etc.)
+    :param output_files: The files to be processed by PlantUML
+    """
     for counter, output_file in enumerate(output_files):
         plant_uml_command = 'java -Djava.awt.headless=true -jar "{0}" "{1}"'.format(plant_uml_jar, output_file)
         if debug:
             plant_uml_command = '{0} -v'.format(plant_uml_command)
-        generate_svg = '{0} -tsvg'.format(plant_uml_command)
+        generate_svg = '{0} -t{1}'.format(plant_uml_command, output_type)
         try:
-            logging.debug('Generating SVG diagram {1}/{2}: {0}'.format(generate_svg, counter + 1, len(output_files)))
+            logging.debug('Generating {3} diagram {1}/{2}: {0}'.format(
+                generate_svg,
+                counter + 1,
+                len(output_files),
+                output_type.upper()))
             os.system(generate_svg)
         except:
-            logging.debug('Could not generate SVG diagram')
+            logging.debug('Could not generate {0} diagram'.format(output_type))
             traceback.print_exc()
 
 
@@ -2000,7 +2012,9 @@ if __name__ == '__main__':
     parser.add_argument('-limit', type=int, required=False, default=100,
                         help="Maximum number of messages to show per diagram. If more are found, several partial diagrams will be generated. Default is 150. Note that setting this value to a too big value may cause a memory crash in PlantUML")
     parser.add_argument('-svg', type=str2bool, required=False, default=True,
-                        help="Whether the PUML files should be converted to SVG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'True")
+                        help="Whether the PUML files should be converted to SVG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'True'")
+    parser.add_argument('-png', type=str2bool, required=False, default=False,
+                        help="Whether the PUML files should be converted to PNG. Requires Java and Graphviz installed, as it calls the included plantuml.jar file. Defaults to 'False'")
     parser.add_argument('-showheartbeat', type=str2bool, required=False, default=False,
                         help='Whether to show PFCP and GTPv2 heartbeats in the diagram. Default is "False"')
     parser.add_argument('-ignore_spurious_tcp_retransmissions', type=str2bool, required=False, default=True,
@@ -2106,9 +2120,13 @@ if __name__ == '__main__':
         args.show_selfmessages,
         custom_packet_filter=args.custom_packet_filter,
         custom_packet_filter_ip_labels=(
-        args.custom_ip_src, args.custom_ip_src_attribute, args.custom_ip_dst, args.custom_ip_dst_attribute)
+            args.custom_ip_src, args.custom_ip_src_attribute, args.custom_ip_dst, args.custom_ip_dst_attribute)
     )
 
     if args.svg:
         print('Converting .puml files to SVG')
-        output_files_as_svg(puml_files)
+        output_files_as_file(puml_files)
+
+    if args.png:
+        print('Converting .puml files to PNG')
+        output_files_as_file(puml_files, output_type='png')
