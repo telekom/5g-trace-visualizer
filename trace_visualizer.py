@@ -2077,11 +2077,16 @@ if __name__ == '__main__':
     print('Ignore PFCP packet duplicates: {0}'.format(args.ignore_pfcp_duplicate_packets))
     print('Show timestamp in diagram: {0}'.format(args.show_timestamp))
     print('Show self-messages: {0}'.format(args.show_selfmessages))
-    print('Custom protocol filter: {0}'.format(args.custom_packet_filter))
-    print(f'Custom protocol IP src: {args.custom_ip_src}')
-    print(f'Custom protocol IP src attribute: {args.custom_ip_src_attribute}')
-    print(f'Custom protocol IP dst: {args.custom_ip_dst}')
-    print(f'Custom protocol IP dst attribute: {args.custom_ip_dst_attribute}')
+    if args.custom_packet_filter != '':
+        print('Custom protocol filter: {0}'.format(args.custom_packet_filter))
+    if args.custom_ip_src != '':
+        print(f'Custom protocol IP src: {args.custom_ip_src}')
+    if args.custom_ip_src_attribute != '':
+        print(f'Custom protocol IP src attribute: {args.custom_ip_src_attribute}')
+    if args.custom_ip_dst != '':
+        print(f'Custom protocol IP dst: {args.custom_ip_dst}')
+    if args.custom_ip_dst_attribute != '':
+        print(f'Custom protocol IP dst attribute: {args.custom_ip_dst_attribute}')
     print()
 
     http2_string_unescape = args.unescapehttp
