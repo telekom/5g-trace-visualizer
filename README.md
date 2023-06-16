@@ -1,6 +1,7 @@
 # 5G Trace Visualizer
 
 * Table of contents
+  * [License](#license)
   * [Summary](#summary)
   * [Requirements](#requirements)
   * [Application structure](#application-structure)
@@ -28,6 +29,11 @@
     * [Ordering labels in a specific order](#ordering-labels-in-a-specific-order)
     * [Missing HTTP headers and HPACK](#missing-http-headers-and-hpack)
     * [Proprietary protocol traces](#proprietary-protocol-traces)
+
+# License
+
+Please see the [LICENSE](LICENSE) for terms and conditions for use, reproduction, and distribution.
+
 # Summary
 
 This set of Python scripts allow you to convert ``pcap``, ``pcapng`` or ``pdml`` 5G protocol traces ([Wireshark](https://www.wireshark.org/), [tcpdump](https://www.tcpdump.org/), ...) into SVG sequence diagrams.

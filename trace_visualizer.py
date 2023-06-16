@@ -1662,7 +1662,7 @@ def import_pdml(file_paths,
     return output_files
 
 
-def call_wireshark(wireshark_versions, input_file_str, http2ports_string, mode=None, check_if_exists=False,
+def call_wireshark(wireshark_versions, platform, input_file_str, http2ports_string, mode=None, check_if_exists=False,
                    additional_protocols=None):
     wireshark_versions_list = [e.strip() for e in wireshark_versions.split(',')]
     output_files = []
@@ -1679,6 +1679,7 @@ def call_wireshark(wireshark_versions, input_file_str, http2ports_string, mode=N
         logging.debug('Preparing call for Wireshark version {0}'.format(wireshark_version))
         output_file = call_wireshark_for_one_version(
             wireshark_version,
+            platform,
             input_file_str,
             http2ports_string,
             mode,
@@ -1722,6 +1723,7 @@ def get_wireshark_portable_folder(wireshark_version):
 
 def call_wireshark_for_one_version(
         wireshark_version,
+        platform,
         input_file_str,
         http2ports_string,
         mode=None,
@@ -2092,7 +2094,7 @@ if __name__ == '__main__':
     http2_string_unescape = args.unescapehttp
     input_file = args.input
     if args.wireshark != 'none':
-        input_file = call_wireshark(args.wireshark, input_file, args.http2ports,
+        input_file = call_wireshark(args.wireshark, platform, input_file, args.http2ports,
                                     additional_protocols=args.custom_packet_filter)
     else:
         if not isinstance(input_file, str):
