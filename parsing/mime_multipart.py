@@ -1,15 +1,18 @@
 import re
 from typing import NamedTuple
 
-boundary_regex = r"--(?P<boundary>[a-zA-Z0-9 \/\._]+)[\n\r]+"
-mime_part_regex = r"(?P<content_headers>(Content-[a-zA-Z0-9\-]+: ([a-zA-Z0-9 \/\.]+)[\n\r]*)+)"
+content_header_values = r"[a-zA-Z0-9 \/\.;=\"]+"
+boundary_regex = r"--(?P<boundary>[a-zA-Z0-9 \/\._\-]+)[\n\r]+"
+mime_part_regex = r"(?P<content_headers>(Content-[a-zA-Z0-9\-]+: (" + content_header_values + r")[\n\r]*)+)"
+
+payload_regex = r'(?P<payload>[.{}\n\r\t\"\w: ,;:]*)'
 
 separate_header_and_payload_regex = re.compile(
-    r"(?P<header>" + boundary_regex + mime_part_regex + r")(?P<payload>.*)")
+    r"(?P<header>" + boundary_regex + mime_part_regex + r")" + payload_regex)
 separate_header_and_payload_without_boundary_regex = re.compile(
-    r"(?P<header>" + mime_part_regex + r")(?P<payload>.*)")
+    r"(?P<header>" + mime_part_regex + r")" + payload_regex)
 
-content_headers_regex = re.compile(r"(?P<name>Content-[a-zA-Z0-9\-]+): (?P<value>[a-zA-Z0-9 \/\.]+)[\n\r]*")
+content_headers_regex = re.compile(r"(?P<name>Content-[a-zA-Z0-9\-_]+): (?P<value>" + content_header_values + r")[\n\r]*")
 
 
 class MimeHeader(NamedTuple):
@@ -39,9 +42,11 @@ def parse_multipart_mime(
         regex_to_use = separate_header_and_payload_regex
     else:
         regex_to_use = separate_header_and_payload_without_boundary_regex
-    # print(regex_to_use)
+
+    print("Using regex: {0}".format(regex_to_use))
     # print(input_str)
     input_matches = list(regex_to_use.finditer(input_str))
+    print('Found {0} matches'.format(len(input_matches)))
     if input_matches is None or len(input_matches) == 0:
         return None
     return_mime_messages = []
@@ -53,12 +58,20 @@ def parse_multipart_mime(
             boundary = None
         else:
             boundary = input_match.group('boundary')
+        payload = input_match.group('payload')
+        try:
+            payload = payload.strip(' \n\r')
+        except:
+            pass
         return_mime_messages.append(MultipartMimeMessage(
             boundary,
             input_match.group('header'),
-            input_match.group('payload'),
+            payload,
             content_headers))
 
+    print('Output:')
+    for r in return_mime_messages:
+        print(r)
     return return_mime_messages
 
 

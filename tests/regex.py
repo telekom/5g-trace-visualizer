@@ -174,13 +174,44 @@ Content-Type: application/json
         self.assertIsNotNone(msg)  # add assertion here
         self.assertEqual(msg.boundary, '------------------------6dbf38bf08f8d96f')
         self.assertEqual(msg.payload,
-                         '{"hoState":"PREPARING","n2SmInfo":{"contentId":"PduSessionResourceSetupRequestTransfer"},"n2SmInfoType":"PDU_RES_SETUP_REQ"}')
-        self.assertEqual(msg.mime_headers[0].name, 'Content-Type')
-        self.assertEqual(msg.mime_headers[0].value, 'application/json')
-        self.assertEqual(msg.mime_headers[1].name, 'Content-Id')
-        self.assertEqual(msg.mime_headers[1].value, 'json')
-        self.assertEqual(msg.mime_headers[2].name, 'Content-Transfer-Encoding')
-        self.assertEqual(msg.mime_headers[2].value, 'string')
+"""{
+	"vsmfReleaseOnly":	false
+}""")
+        self.assertEqual(msg.mime_headers[0].name, 'Content-Disposition')
+        self.assertEqual(msg.mime_headers[0].value, 'attachment; name="jsonData"')
+        self.assertEqual(msg.mime_headers[1].name, 'Content-Type')
+        self.assertEqual(msg.mime_headers[1].value, 'application/json')
+
+    def test_free5gc_multipart_2(self):
+        packet_text = """--------------------------6dbf38bf08f8d96f
+Content-Disposition: attachment; name="jsonData"
+Content-Type: application/json
+
+{
+	"vsmfReleaseOnly":	false
+}
+--------------------------6dbf38bf08f8d96f
+Content-Disposition: attachment; name="test_data"
+Content-Type: application/json
+
+{
+	"test_parameter":	false
+}
+--------------------------6dbf38bf08f8d96f--
+
+"""
+        msg = parsing.mime_multipart.parse_multipart_mime(packet_text, single_part=False)[0]
+        print(msg)
+        self.assertIsNotNone(msg)  # add assertion here
+        self.assertEqual(msg.boundary, '------------------------6dbf38bf08f8d96f')
+        self.assertEqual(msg.payload,
+"""{
+	"vsmfReleaseOnly":	false
+}""")
+        self.assertEqual(msg.mime_headers[0].name, 'Content-Disposition')
+        self.assertEqual(msg.mime_headers[0].value, 'attachment; name="jsonData"')
+        self.assertEqual(msg.mime_headers[1].name, 'Content-Type')
+        self.assertEqual(msg.mime_headers[1].value, 'application/json')
 
 if __name__ == '__main__':
     unittest.main()
