@@ -1,5 +1,7 @@
+import collections
 import logging
 import xml
+from enum import Enum
 from xml.etree import ElementTree as ET
 
 
@@ -77,3 +79,14 @@ def xml2json(root: xml.etree.ElementTree.Element) -> dict:
 
     parsed_tree = recursiv(root)
     return parsed_tree
+
+
+PacketDescription = collections.namedtuple('PacketDescription',
+                                           'ip_src ip_dst frame_number protocols_str msg_description timestamp timestamp_offsett')
+
+
+class PacketType(Enum):
+    UNKNOWN = 0
+    IPv4 = 1
+    IPv6 = 2
+    CUSTOM = 3

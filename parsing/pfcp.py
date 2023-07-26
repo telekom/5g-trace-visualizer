@@ -5,6 +5,8 @@ import yaml
 
 from parsing.nas import nas_5g_proto_to_dict
 
+pfcp_req_regex = re.compile(r'pfcp\.msg_type: .*[Rr]equest.*')
+pfcp_message_type_regex = re.compile(r"pfcp\.msg_type: 'Message [tT]ype: (.*)'")
 
 def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_duplicate_packets, last_pfcp_message):
     try:
@@ -35,6 +37,3 @@ def parse_pfcp_proto(frame_number, nas_5g_proto, pfcp_heartbeat, ignore_pfcp_dup
 
     return nas_5g_json_str
 
-
-pfcp_req_regex = re.compile(r'pfcp\.msg_type: .*[Rr]equest.*')
-pfcp_message_type_regex = re.compile(r"pfcp\.msg_type: 'Message [tT]ype: (.*)'")

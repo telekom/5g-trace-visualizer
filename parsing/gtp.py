@@ -5,6 +5,8 @@ import yaml
 
 from parsing.nas import nas_5g_proto_to_dict
 
+gtpv2_req_regex = re.compile(r"gtpv2\.message_type: '.*[Rr]equest.*'")
+gtpv2_message_type_regex = re.compile(r"gtpv2\.message_type: 'Message [tT]ype: (.*)'")
 
 def parse_gtpv2_proto(frame_number, gtpv2_pdu, show_heartbeat):
     if gtpv2_pdu is None:
@@ -27,6 +29,3 @@ def parse_gtpv2_proto(frame_number, gtpv2_pdu, show_heartbeat):
 
     return nas_5g_json_str
 
-
-gtpv2_req_regex = re.compile(r"gtpv2\.message_type: '.*[Rr]equest.*'")
-gtpv2_message_type_regex = re.compile(r"gtpv2\.message_type: 'Message [tT]ype: (.*)'")

@@ -7,6 +7,10 @@ from lxml.etree import Element
 
 from parsing.common import xml2json
 
+nas_req_regex = re.compile(r"nas_5gs\..*message_type: '.*[Rr]equest.*'")
+nas_message_type_regex = re.compile(r"nas_5gs\..*message_type: 'Message [tT]ype: (.*)'")
+ngap_message_type_regex = re.compile(r"ngap.procedureCode: 'procedureCode: id-(.*)'")
+
 
 def parse_nas_proto_el(frame_number, el: Element, multipart_proto=False):
     if not multipart_proto:
@@ -77,6 +81,3 @@ def find_nas_proto(ngap_pdu: Element) -> list[Element]:
     return all_nas
 
 
-nas_req_regex = re.compile(r"nas_5gs\..*message_type: '.*[Rr]equest.*'")
-nas_message_type_regex = re.compile(r"nas_5gs\..*message_type: 'Message [tT]ype: (.*)'")
-ngap_message_type_regex = re.compile(r"ngap.procedureCode: 'procedureCode: id-(.*)'")
