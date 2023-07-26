@@ -3,35 +3,47 @@ import re
 
 import yaml
 
+from parsing.common import PacketDescription
 from parsing.nas import nas_5g_proto_to_dict
 
-
-def get_diam_description(packet):
-    '''
-        Return diameter packet description as follow:
-        Command-Code + Application-Id + Session-Id
-    '''
-    short_commands = {
+short_commands = {
         "274 Abort-Session": "274 AS",
         "275 Session-Termination": "275 ST",
         "280 Device-Watchdog": "280 DW",
     }
-    diam_commandcode_regex = re.compile(r"diameter\.cmd\.code:\s+'Command\s+Code:\s+(.+)'")
-    diam_application_regex = re.compile(r"diameter\.applicationId:\s+'ApplicationId:\s+(.+)'")
-    diam_request_regex = re.compile(r"diameter\.flags\.request:\s+'(\d)")
-    diam_session_regex = re.compile(r"diameter\.Session-Id:\s+'Session-Id:\s+(.+)'")
 
-    # print('--------------------------')
-    # print(packet.msg_description)
-    # print('--------------------------')
+diam_commandcode_regex = re.compile(r"diameter\.cmd\.code:\s+'Command\s+Code:\s+(.+)'")
+diam_application_regex = re.compile(r"diameter\.applicationId:\s+'ApplicationId:\s+(.+)'")
+diam_request_regex = re.compile(r"diameter\.flags\.request:\s+'(\d)")
+diam_session_regex = re.compile(r"diameter\.Session-Id:\s+'Session-Id:\s+(.+)'")
+radius_request_regex = re.compile(r"radius.")
+radius_code_regex = re.compile(r"radius.code: .*:(.*)")
+
+def get_diam_description(packet: PacketDescription):
+    '''
+        Return diameter packet description as follow:
+        Command-Code + Application-Id + Session-Id
+    '''
 
     command_code = diam_commandcode_regex.search(packet.msg_description)
     application = diam_application_regex.search(packet.msg_description)
     session = diam_session_regex.search(packet.msg_description)
+
+    # Fix for #34
+    diam_request_match = diam_request_regex.search(packet.msg_description)
+    if diam_request_match is None and radius_request_regex is not None:
+        radius_code = radius_code_regex.search(packet.msg_description)
+        message_title = 'RADIUS'
+        if radius_code is not None:
+            message_title = message_title + ' ' + radius_code.group(1)
+        return message_title
+    else:
+        return ''
+
     # Command-Code not contain Request or Answer property.
     # Add it manually at the end of Command-Code
     command_postfix = 'A'
-    if diam_request_regex.search(packet.msg_description).group(1) == '1':
+    if diam_request_match.group(1) == '1':
         command_postfix = 'R'
 
     command = command_code.group(1) if command_code else ''
