@@ -18,13 +18,13 @@ import sys
 import traceback
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from enum import Enum
 from typing import Pattern, Tuple
 
 from packaging import version
 
 import parsing.http
 import yaml_parser
+from parsing.common import PacketDescription, PacketType
 from parsing.diameter_radius import get_diam_description, parse_diam_proto
 from parsing.gtp import parse_gtpv2_proto, gtpv2_req_regex, gtpv2_message_type_regex
 from parsing.http import parse_http_proto, http_rsp_regex, http_url_regex, http_method_regex
@@ -41,17 +41,6 @@ wireshark_folder = 'wireshark'
 ip_regex: Pattern[str] = re.compile(r'Src: ([\d\.:]*), Dst: ([\d\.:]*)')
 nfs_regex = re.compile(r':path: \/(.*)\/v.*\/.*')
 debug = False
-
-PacketDescription = collections.namedtuple('PacketDescription',
-                                           'ip_src ip_dst frame_number protocols_str msg_description timestamp timestamp_offsett')
-
-
-class PacketType(Enum):
-    UNKNOWN = 0
-    IPv4 = 1
-    IPv6 = 2
-    CUSTOM = 3
-
 
 # https://www.w3schools.com/colors/colors_picker.asp
 color_actors = '#e6e6e6'
