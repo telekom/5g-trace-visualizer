@@ -1,4 +1,6 @@
 import pandas as pd
+
+import parsing.http
 from parsing import json_parser
 import trace_visualizer
 import logging
@@ -91,7 +93,7 @@ def _generate_summary_row(x):
     elif protocol == 'PFCP':
         summary = summary_raw.split('\\n')[-1].strip()
     elif protocol == 'HTTP/2':
-        sbi_url_descriptions = trace_visualizer.parse_sbi_type_from_url(summary_raw)
+        sbi_url_descriptions = parsing.http.parse_sbi_type_from_url(summary_raw)
         if sbi_url_descriptions is None:
             summary = ''
         else:
