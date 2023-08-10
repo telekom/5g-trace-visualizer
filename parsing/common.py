@@ -2,6 +2,7 @@ import collections
 import logging
 import xml
 from enum import Enum
+from typing import NamedTuple
 from xml.etree import ElementTree as ET
 
 
@@ -81,11 +82,19 @@ def xml2json(root: xml.etree.ElementTree.Element) -> dict:
     return parsed_tree
 
 
-PacketDescription = collections.namedtuple('PacketDescription',
-                                           'ip_src ip_dst frame_number protocols_str msg_description timestamp timestamp_offsett')
+class PacketDescription(NamedTuple):
+    """Describes a packet for the PlantUML visualization"""
+    ip_src: str
+    ip_dst: str
+    frame_number: str
+    protocols_str: str
+    msg_description: str
+    timestamp: float
+    timestamp_offsett: float
 
 
 class PacketType(Enum):
+    """Describes Packet types"""
     UNKNOWN = 0
     IPv4 = 1
     IPv6 = 2

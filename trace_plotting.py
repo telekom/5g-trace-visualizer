@@ -1,6 +1,5 @@
 import pandas as pd
 
-import parsing.http
 from parsing import json_parser
 import trace_visualizer
 import logging
@@ -35,74 +34,6 @@ def parse_k8s_kpis_as_dataframe(filename):
     data_to_plot = data_to_plot.reset_index()
 
     return data_to_plot
-
-
-def import_pcap_as_dataframe(pcap_files, http2_ports, wireshark_version, logging_level=logging.INFO, remove_pdml=False):
-    # Imports one or more pcap files as a dataframe with the packet parsing implemented in the trace_visualizer code
-
-    # Accept either a single path or a list or paths
-    if not type(pcap_files) is list:
-        pcap_files = [pcap_files]
-    current_verbosity_level = trace_visualizer.application_logger.level
-    try:
-        # Reduce verbosity
-        trace_visualizer.application_logger.setLevel(logging_level)
-        packets_df_list = []
-
-        if len(pcap_files) == 0:
-            return None
-
-        for idx, file in enumerate(pcap_files):
-            if os.path.exists(file):
-                pdml_file = trace_visualizer.call_wireshark(wireshark_version, file, http2_ports)
-                packet_descriptions = trace_visualizer.import_pdml(pdml_file, diagrams_to_output='raw')
-                packets_df = pd.DataFrame(packet_descriptions,
-                                          columns=['ip_src', 'ip_dst', 'frame_number', 'protocol', 'msg_description',
-                                                   'timestamp', 'timestamp_offset'])
-                packets_df['datetime'] = pd.to_datetime(packets_df['timestamp'], unit='s')
-                packets_df['msg_description'] = packets_df['msg_description'].str.replace('\\n', '\n')
-                packets_df['summary_raw'] = [trace_visualizer.packet_to_str(p).protocol for p in packet_descriptions]
-
-                # Generate summary column
-                packets_df['summary'] = packets_df.apply(_generate_summary_row, axis=1)
-
-                packets_df['file'] = file
-                packets_df['file_idx'] = idx
-                packets_df_list.append(packets_df)
-                if remove_pdml:
-                    logging.debug('Removing file(s) {0}'.format(', '.join(pdml_file)))
-                    for e in pdml_file:
-                        os.remove(e)
-
-        # Consolidated packet list
-        packets_df = pd.concat(packets_df_list, ignore_index=True)
-        return packets_df
-    except:
-        return None
-    finally:
-        trace_visualizer.application_logger.setLevel(current_verbosity_level)
-
-
-def _generate_summary_row(x):
-    protocol = x['protocol']
-    summary_raw = x['summary_raw']
-    if protocol == 'NGAP':
-        summary = 'NAS ' + \
-                  summary_raw.replace('\\n', ',').replace('\n', '').replace('NGAP ', '').replace('NAS ', '').split(',')[
-                      -1].strip()
-    elif protocol == 'PFCP':
-        summary = summary_raw.split('\\n')[-1].strip()
-    elif protocol == 'HTTP/2':
-        sbi_url_descriptions = parsing.http.parse_sbi_type_from_url(summary_raw)
-        if sbi_url_descriptions is None:
-            summary = ''
-        else:
-            summary = '\n'.join(
-                ['{0} {1}'.format(sbi_url_description.method, sbi_url_description.call) for sbi_url_description in
-                 sbi_url_descriptions])
-    else:
-        summary = ''
-    return summary
 
 
 def datetime_to_str(x):
