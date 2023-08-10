@@ -29,6 +29,7 @@
     * [Ordering labels in a specific order](#ordering-labels-in-a-specific-order)
     * [Missing HTTP headers and HPACK](#missing-http-headers-and-hpack)
     * [Proprietary protocol traces](#proprietary-protocol-traces)
+    * [Using a root folder](#using-a-root-folder)
 
 # License
 
@@ -490,6 +491,27 @@ python trace_visualizer.py -wireshark 4.0.5 -http2ports "65413,65428,65438,65440
 ``
 
 ![Service Request Connected_205_210](doc/examples/Service%20Request%20Connected_205_210_4.0.5.svg)
+
+### Using a root folder
+
+You can also use the ``-folder`` option to avoid having to repeat a folder path on all variables specifying a path.
+
+Using 
+
+``
+python trace_visualizer.py -wireshark 4.0.5 -http2ports "65413,65428,65438,65440,65457,65462,65495,65482,65501,65504,65512,65514,65521,65528,31382,8080,34385" -show_timestamp True "<path>\Service Request Connected_205_210.pcap"
+``
+
+is equivalent to
+
+``
+python trace_visualizer.py -folder <path> -wireshark 4.0.5 -http2ports "65413,65428,65438,65440,65457,65462,65495,65482,65501,65504,65512,65514,65521,65528,31382,8080,34385" -show_timestamp True "Service Request Connected_205_210.pcap"
+``
+
+The ``folder`` variable currently simultaneously applies to:
+* The input files
+* ``pods``
+* ``openstackservers``
 
 ## Notes
 
