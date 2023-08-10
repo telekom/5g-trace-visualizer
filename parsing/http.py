@@ -175,7 +175,7 @@ def parse_http_proto_stream(
             # Since the boundary data is anyway in the HEADERS frame in the packet, we would not be able to read it
             # while in the DATA frame, so I made this part independent of the boundary variable
             if boundary is None and len(headers) == 0:
-                data_ascii = hex_string_to_ascii(data_hex, try_json_formatting=False)
+                data_ascii = hex_string_to_ascii(data_hex, try_json_formatting=True, return_original_if_not_json=True)
                 try:
                     # Parses the ASCII-converted frame and returns a list of MIME multipart messages that it found
                     m_all = parsing.mime_multipart.parse_multipart_mime(data_ascii)

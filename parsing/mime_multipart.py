@@ -43,10 +43,10 @@ def parse_multipart_mime(
     else:
         regex_to_use = separate_header_and_payload_without_boundary_regex
 
-    print("Using regex: {0}".format(regex_to_use))
+    # print("Using regex: {0}".format(regex_to_use))
     # print(input_str)
     input_matches = list(regex_to_use.finditer(input_str))
-    print('Found {0} matches'.format(len(input_matches)))
+    # print('Found {0} matches'.format(len(input_matches)))
     if input_matches is None or len(input_matches) == 0:
         return None
     return_mime_messages = []
