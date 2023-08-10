@@ -154,6 +154,22 @@ def parse_http_proto_stream(
                     traceback.print_stack()
                 return ascii_str
 
+            # ToDo: Improve this part
+            # Read boundary information from HTTP2 proto element
+            # try:
+            #    boundary_el = http2_proto_el.findall(".//field[@name='mime_multipart.first_boundary']")
+            #    if len(boundary_el) != 0:
+            #        boundary_attr = boundary_el[0].attrib['show'].strip()
+            #        boundary = ''.join(filter(lambda x: x in string.printable, boundary_attr))
+            #        boundary = boundary[2:] # We do not need the first two '-'
+            #        logging.debug("Frame{0}: Found boundary in HTTP2 Protocol element: {1}".format(frame_number, boundary))
+            #    for part in http2_proto_el.findall(".//field[@name='mime_multipart.part']"):
+            #        total_size = int(part.attrib['size'])
+            #        payload_size = int(part.find(".//proto").attrib['size'])
+            #        multipart_lengths.append((total_size-payload_size, payload_size))
+            #except:
+            #    pass
+
             # Try to auto-detect MIME multipart payloads in packets with no HTTP/2 headers (e.g. headers sent in another
             # packet.
             # Since the boundary data is anyway in the HEADERS frame in the packet, we would not be able to read it
@@ -165,7 +181,7 @@ def parse_http_proto_stream(
                     m_all = parsing.mime_multipart.parse_multipart_mime(data_ascii)
                     # logging.debug(data_ascii)
 
-                    if len(m_all) > 0:
+                    if m_all is not None and len(m_all) > 0:
                         boundary = m_all[0].boundary
                         # (header length, payload length)
                         multipart_lengths = [(len(m.header), len(m.payload)) for m in m_all]
@@ -205,7 +221,7 @@ def parse_http_proto_stream(
 
                 # Get the other parsed protocols
                 mime_parts = http2_proto_el.findall("proto[@name='mime_multipart']/field[@name='mime_multipart.part']")
-                logging.debug('Frame {0}: Found {1} MIME parts by scanning dissected data'.format(
+                logging.debug('Frame {0}: Found {1} MIME parts by scanning data dissected by Wireshark'.format(
                     frame_number,
                     len(mime_parts),
                     boundary))
@@ -249,12 +265,16 @@ def parse_http_proto_stream(
                                 # XPath query: //proto[@name='mime_multipart']//field[@name='mime_multipart.header.content-id' and @show='n1SmMsg']/../proto
                                 dissected_protocol_text = ''
                                 try:
+                                    current_description = multipart_descriptions[idx]
+                                except:
+                                    current_description = ''
+                                try:
                                     # Search for an existing parsed protocol (may or may not be present)
-                                    # Needed to adapt th eXPath query because LXML only supports a subset, see
+                                    # Needed to adapt the XPath query because LXML only supports a subset, see
                                     # https://docs.python.org/3/library/xml.etree.elementtree.html#xpath-support
                                     matching_mime_multipart_proto = http2_proto_el.find(
                                         ".//field[@name='mime_multipart.header.content-id'][@show='{0}']/../proto".format(
-                                            multipart_ids[idx]
+                                            current_description
                                         ))
                                     protocol_data_to_show = xml2json(matching_mime_multipart_proto)
 
@@ -268,7 +288,7 @@ def parse_http_proto_stream(
 
                                 # Final assembly of display text
                                 payload_clean_assembled = '{0}\n{1}{2}'.format(
-                                    multipart_descriptions[idx],
+                                    current_description,
                                     hex_string_to_ascii(payload_clean, return_original_if_not_json=True),
                                     dissected_protocol_text
                                 )
