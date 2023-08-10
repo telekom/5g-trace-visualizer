@@ -50,7 +50,8 @@ def call_wireshark_for_one_version(
         http2ports_string,
         mode=None,
         check_if_exists=False,
-        additional_protocols: str = None):
+        additional_protocols: str = None
+):
     logging.debug('Wireshark call for {0}. Version {1}, HTTP/2 ports: {2}'.format(input_file_str, wireshark_version,
                                                                                   http2ports_string))
     input_files = input_file_str.split(',')
@@ -705,8 +706,15 @@ def get_wireshark_portable_last_version():
     return None
 
 
-def call_wireshark(wireshark_versions, platform, input_file_str, http2ports_string, mode=None, check_if_exists=False,
-                   additional_protocols=None):
+def call_wireshark(
+        wireshark_versions,
+        platform,
+        input_file_str,
+        http2ports_string,
+        mode=None,
+        check_if_exists=False,
+        additional_protocols=None
+):
     wireshark_versions_list = [e.strip() for e in wireshark_versions.split(',')]
     output_files = []
     successful_wireshark_call = False

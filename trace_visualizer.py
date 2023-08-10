@@ -11,6 +11,7 @@ import platform
 import sys
 
 import parsing.http
+from utils.files import add_folder_to_file_list
 from utils.plantuml import output_files_as_file, plant_uml_jar
 from utils.wireshark import import_pdml, call_wireshark
 
@@ -96,6 +97,8 @@ if __name__ == '__main__':
                         help="If custom_packet_filter is used, the query for an element including the IP destination, e.g. field[@name='field_with_ip']")
     parser.add_argument('-custom_ip_dst_attribute', type=str, required=False, default='',
                         help="Where the actual value is placed, e.g. 'show'")
+    parser.add_argument('-folder', type=str, required=False, default='',
+                        help="Specifies a folder, such that all path references are relative to this folder")
 
     args = parser.parse_args()
 
@@ -131,14 +134,27 @@ if __name__ == '__main__':
         print(f'Custom protocol IP dst: {args.custom_ip_dst}')
     if args.custom_ip_dst_attribute != '':
         print(f'Custom protocol IP dst attribute: {args.custom_ip_dst_attribute}')
+    if args.folder != '':
+        print(f'Root folder for files: {args.folder}')
+        args.input = add_folder_to_file_list(args.input, args.folder)
+        args.pods = add_folder_to_file_list(args.pods, args.folder)
+        args.openstackservers = add_folder_to_file_list(args.openstackservers, args.folder)
+        print('  New Input file: {0}'.format(args.input, args.folder))
+        print('  New Pods YAML file: {0}'.format(args.pods))
+        print('  New OpenStack servers file: {0}'.format(args.openstackservers))
     print()
 
     parsing.http.http2_string_unescape = args.unescapehttp
 
     input_file = args.input
     if args.wireshark != 'none':
-        input_file = call_wireshark(args.wireshark, platform, input_file, args.http2ports,
-                                    additional_protocols=args.custom_packet_filter)
+        input_file = call_wireshark(
+            args.wireshark,
+            platform,
+            input_file,
+            args.http2ports,
+            additional_protocols=args.custom_packet_filter
+        )
     else:
         if not isinstance(input_file, str):
             print('\nERROR: PDML input only accepts one file')
